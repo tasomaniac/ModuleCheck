@@ -19,7 +19,12 @@ import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.TypeSpec
-import modulecheck.specs.*
+import modulecheck.specs.ProjectSettingsSpecBuilder
+import modulecheck.specs.ProjectSpec
+import modulecheck.specs.ProjectSrcSpec
+import modulecheck.specs.applyEach
+import modulecheck.specs.buildfile.ProjectBuildSpec
+import modulecheck.specs.buildfile.ProjectBuildSpecBuilder
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
 

@@ -19,10 +19,10 @@ import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.TypeSpec
-import modulecheck.specs.ProjectBuildSpec
 import modulecheck.specs.ProjectSettingsSpec
 import modulecheck.specs.ProjectSpec
 import modulecheck.specs.ProjectSrcSpec
+import modulecheck.specs.buildfile.ProjectBuildSpec
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.nio.file.Path

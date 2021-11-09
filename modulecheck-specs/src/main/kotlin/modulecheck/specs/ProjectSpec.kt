@@ -16,6 +16,7 @@
 package modulecheck.specs
 
 import modulecheck.specs.ProjectSrcSpecBuilder.RawFile
+import modulecheck.specs.buildfile.ProjectBuildSpec
 import java.io.File
 import java.nio.file.Path
 

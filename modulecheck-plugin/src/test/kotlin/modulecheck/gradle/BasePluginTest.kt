@@ -15,9 +15,9 @@
 
 package modulecheck.gradle
 
-import modulecheck.specs.DEFAULT_AGP_VERSION
-import modulecheck.specs.DEFAULT_GRADLE_VERSION
-import modulecheck.specs.DEFAULT_KOTLIN_VERSION
+import modulecheck.specs.util.DEFAULT_AGP_VERSION
+import modulecheck.specs.util.DEFAULT_GRADLE_VERSION
+import modulecheck.specs.util.DEFAULT_KOTLIN_VERSION
 import modulecheck.testing.BaseTest
 import org.gradle.testkit.runner.BuildResult
 import org.gradle.testkit.runner.GradleRunner

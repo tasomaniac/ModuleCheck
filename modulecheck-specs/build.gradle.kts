@@ -13,21 +13,16 @@
  * limitations under the License.
  */
 
-import org.jetbrains.kotlin.gradle.dsl.ExplicitApiMode
-
 plugins {
   javaLibrary
 }
 
-kotlin {
-  explicitApi = ExplicitApiMode.Strict
-}
-
 dependencies {
 
+  api(libs.agp)
   api(libs.kotlinPoet)
 
-  compileOnly(gradleApi())
+  api(gradleApi())
 
   implementation(libs.kotlin.compiler)
   implementation(libs.kotlin.reflect)

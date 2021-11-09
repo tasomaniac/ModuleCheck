@@ -15,6 +15,8 @@
 
 package modulecheck.specs
 
+import modulecheck.specs.util.DEFAULT_AGP_VERSION
+import modulecheck.specs.util.DEFAULT_KOTLIN_VERSION
 import java.nio.file.Path
 
 public data class ProjectSettingsSpec(

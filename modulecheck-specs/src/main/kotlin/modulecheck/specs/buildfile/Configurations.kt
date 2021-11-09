@@ -13,14 +13,15 @@
  * limitations under the License.
  */
 
-package modulecheck.specs
+package modulecheck.specs.buildfile
 
-public interface Builder<T> {
+object Configurations {
 
-  public fun build(): T
-}
-
-public interface HasBuilder<T : Builder<*>> {
-
-  public fun toBuilder(): T
+  const val api: String = "api"
+  const val compile: String = "compile"
+  const val compileOnly: String = "compileOnly"
+  const val compileOnlyApi: String = "compileOnlyApi"
+  const val implementation: String = "implementation"
+  const val runtime: String = "runtime"
+  const val runtimeOnly: String = "runtimeOnly"
 }

@@ -15,12 +15,7 @@
 
 package modulecheck.specs
 
-public interface Builder<T> {
-
-  public fun build(): T
-}
-
-public interface HasBuilder<T : Builder<*>> {
-
-  public fun toBuilder(): T
+interface GradleComponent {
+  fun asKtsString(): String
+  fun asGroovyString(): String
 }

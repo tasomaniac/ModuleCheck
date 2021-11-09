@@ -13,14 +13,6 @@
  * limitations under the License.
  */
 
-package modulecheck.specs
+package modulecheck.specs.util
 
-public interface Builder<T> {
-
-  public fun build(): T
-}
-
-public interface HasBuilder<T : Builder<*>> {
-
-  public fun toBuilder(): T
-}
+fun String.indentEachLine(size: Int = 2) = prependIndent(" ".repeat(size))

@@ -18,10 +18,10 @@ package modulecheck.gradle
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.TypeSpec
-import modulecheck.specs.ProjectBuildSpec
 import modulecheck.specs.ProjectSpec
 import modulecheck.specs.ProjectSrcSpec
 import modulecheck.specs.applyEach
+import modulecheck.specs.buildfile.ProjectBuildSpec
 import java.nio.file.Path
 
 @Suppress("LongParameterList")
