@@ -34,10 +34,10 @@ class RealMcProject(
 
   override val projectDependencies: ProjectDependencies by projectDependencies
 
-  private val context = ProjectContextImpl(this)
+  private val context = RealProjectContext(this)
 
-  override fun <E : ProjectContext.Element> get(key: ProjectContext.Key<E>): E {
-    return context[key]
+  override suspend fun <E : ProjectContext.Element> get(key: ProjectContext.Key<E>): E {
+    return context.get(key)
   }
 
   override fun compareTo(other: McProject): Int = path.compareTo(other.path)

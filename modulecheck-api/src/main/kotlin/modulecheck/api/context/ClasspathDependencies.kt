@@ -15,65 +15,73 @@
 
 package modulecheck.api.context
 
+import kotlinx.coroutines.runBlocking
 import modulecheck.parsing.*
+import java.util.concurrent.ConcurrentHashMap
 
 data class ClasspathDependencies(
-  internal val delegate: Map<SourceSetName, Set<ConfiguredProjectDependency>>
-) : Map<SourceSetName, Set<ConfiguredProjectDependency>> by delegate,
+  internal val delegate: MutableMap<SourceSetName, List<TransitiveProjectDependency>>,
+  private val project: McProject
+) : Map<SourceSetName, List<TransitiveProjectDependency>> by delegate,
   ProjectContext.Element {
 
   override val key: ProjectContext.Key<ClasspathDependencies>
     get() = Key
 
-  companion object Key : ProjectContext.Key<ClasspathDependencies> {
-    override operator fun invoke(project: McProject): ClasspathDependencies {
-      val map = project.sourceSets.keys
-        .associateWith { project.fullTree(it).toSet() }
+  fun all(): List<TransitiveProjectDependency> {
+    return project.sourceSets.keys.flatMap { get(it) }
+  }
 
-      return ClasspathDependencies(map)
-    }
+  override operator fun get(key: SourceSetName): List<TransitiveProjectDependency> {
+    return delegate.getOrPut(key) { runBlocking { project.fullTree(key) } }
+  }
 
-    private fun McProject.fullTree(
-      sourceSetName: SourceSetName
-    ): Sequence<ConfiguredProjectDependency> {
+  private suspend fun McProject.fullTree(
+    sourceSetName: SourceSetName
+  ): List<TransitiveProjectDependency> {
 
-      val seed = sequenceOf(projectDependencies[sourceSetName]).flatten()
+    fun sourceApiConfigs(
+      sourceSetName: SourceSetName,
+      isTestFixtures: Boolean
+    ): Set<ConfigurationName> = setOfNotNull(
+      sourceSetName.apiConfig(),
+      ConfigurationName.api,
+      SourceSetName.TEST_FIXTURES.apiConfig().takeIf { isTestFixtures }
+    )
 
-      val sourceApis = setOf(sourceSetName.apiConfig(), ConfigurationName.api)
-      val sourceApiWithTestFixtures = setOf(
-        sourceSetName.apiConfig(),
-        ConfigurationName.api,
-        SourceSetName.TEST_FIXTURES.apiConfig()
-      )
+    val directDependencies = projectDependencies[sourceSetName]
+      .filterNot { it.project == project }
+      .toSet()
 
-      return generateSequence(seed) { cpds ->
+    val directDependencyPaths = directDependencies.map { it.project.path }.toSet()
 
-        cpds.flatMap { (_, proj, isTestFixture) ->
+    val inherited = directDependencies.flatMap { sourceCpd ->
+      sourceApiConfigs(sourceSetName, sourceCpd.isTestFixture)
+        .flatMap { apiConfig ->
 
-          if (isTestFixture) {
-            sourceApiWithTestFixtures
-          } else {
-            sourceApis
-          }.flatMap { apiConfig ->
-
-            proj.projectDependencies[apiConfig].orEmpty()
-              .map { originalCpd ->
-                val sourceCpd = requireSourceOf(
-                  dependencyProject = originalCpd.project,
-                  sourceSetName = sourceSetName,
-                  isTestFixture = originalCpd.isTestFixture,
-                  apiOnly = false
-                )
-
-                originalCpd.copy(configurationName = sourceCpd.configurationName)
-              }
-          }
+          sourceCpd.project
+            .classpathDependencies()[apiConfig.toSourceSetName()]
+            .asSequence()
+            .filter { it.contributed.configurationName.isApi() }
+            .filterNot { it.contributed.project.path in directDependencyPaths }
+            .map { transitiveCpd ->
+              TransitiveProjectDependency(sourceCpd, transitiveCpd.contributed)
+            }
         }
-          .takeIf { it.firstOrNull() != null }
-      }
-        .flatten()
+    }
+      .toSet()
+
+    val directPairs = directDependencies.map { TransitiveProjectDependency(it, it) }
+
+    return directPairs + inherited
+  }
+
+  companion object Key : ProjectContext.Key<ClasspathDependencies> {
+    override suspend operator fun invoke(project: McProject): ClasspathDependencies {
+      return ClasspathDependencies(ConcurrentHashMap(), project)
     }
   }
 }
 
-val ProjectContext.classpathDependencies: ClasspathDependencies get() = get(ClasspathDependencies)
+suspend fun ProjectContext.classpathDependencies(): ClasspathDependencies =
+  get(ClasspathDependencies)

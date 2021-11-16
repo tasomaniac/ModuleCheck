@@ -98,6 +98,8 @@ value class ConfigurationName(val value: String) : Comparable<ConfigurationName>
    */
   fun apiVariant() = toSourceSetName().apiConfig()
 
+  fun isApi(): Boolean = this == apiVariant()
+
   override fun compareTo(other: ConfigurationName): Int {
     return value.compareTo(other.value)
   }
@@ -106,14 +108,16 @@ value class ConfigurationName(val value: String) : Comparable<ConfigurationName>
 
   companion object {
 
-    val compileOnlyApi = ConfigurationName("compileOnlyApi")
+    val androidTestImplementation = ConfigurationName("androidTestImplementation")
     val api = ConfigurationName("api")
-    val kapt = ConfigurationName("kapt")
-    val implementation = ConfigurationName("implementation")
-    val compileOnly = ConfigurationName("compileOnly")
     val compile = ConfigurationName("compile")
-    val runtimeOnly = ConfigurationName("runtimeOnly")
+    val compileOnly = ConfigurationName("compileOnly")
+    val compileOnlyApi = ConfigurationName("compileOnlyApi")
+    val implementation = ConfigurationName("implementation")
+    val kapt = ConfigurationName("kapt")
     val runtime = ConfigurationName("runtime")
+    val runtimeOnly = ConfigurationName("runtimeOnly")
+    val testApi = ConfigurationName("testApi")
     val testImplementation = ConfigurationName("testImplementation")
 
     /**
@@ -170,10 +174,10 @@ data class Config(
 
 fun <T : Any> Map<ConfigurationName, Collection<T>>.main(): List<T> {
   return listOfNotNull(
-    get("api".asConfigurationName()),
-    get("compileOnly".asConfigurationName()),
-    get("implementation".asConfigurationName()),
-    get("runtimeOnly".asConfigurationName())
+    get(ConfigurationName.api),
+    get(ConfigurationName.compileOnly),
+    get(ConfigurationName.implementation),
+    get(ConfigurationName.runtimeOnly)
   ).flatten()
 }
 

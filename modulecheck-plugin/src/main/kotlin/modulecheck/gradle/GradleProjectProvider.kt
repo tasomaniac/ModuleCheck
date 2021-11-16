@@ -72,8 +72,6 @@ class GradleProjectProvider(
     val hasKapt = gradleProject
       .plugins
       .hasPlugin(KAPT_PLUGIN_ID)
-    val sourceSets = gradleProject
-      .jvmSourceSets()
 
     val testedExtension = gradleProject
       .extensions
@@ -113,7 +111,7 @@ class GradleProjectProvider(
         buildFile = gradleProject.buildFile,
         configurations = configurations,
         hasKapt = hasKapt,
-        sourceSets = sourceSets,
+        sourceSets = gradleProject.jvmSourceSets(),
         projectCache = projectCache,
         anvilGradlePlugin = gradleProject.anvilGradlePluginOrNull(),
         projectDependencies = projectDependencies
@@ -153,11 +151,6 @@ class GradleProjectProvider(
     configuration.dependencies
       .filterIsInstance<ExternalModuleDependency>()
       .map { dep ->
-
-        /*
-        val isTestFixture = dep.requestedCapabilities.filterIsInstance<ImmutableCapability>()
-          .any { it.name.equals(dep.name + TEST_FIXTURES_SUFFIX) }
-         */
 
         val statementTextLazy = lazy psiLazy@{
           val coords = MavenCoordinates(dep.group, dep.name, dep.version)

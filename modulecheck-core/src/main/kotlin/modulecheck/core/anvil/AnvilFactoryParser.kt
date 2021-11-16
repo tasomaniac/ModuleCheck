@@ -18,12 +18,12 @@ package modulecheck.core.anvil
 import modulecheck.api.context.importsForSourceSetName
 import modulecheck.api.context.jvmFilesForSourceSetName
 import modulecheck.api.context.possibleReferencesForSourceSetName
+import modulecheck.api.util.lazyDeferred
 import modulecheck.parsing.McProject
+import modulecheck.parsing.SourceSetName
 import modulecheck.parsing.java.JavaFile
 import modulecheck.parsing.psi.KotlinFile
-import modulecheck.parsing.toSourceSetName
 import net.swiftzer.semver.SemVer
-import kotlin.LazyThreadSafetyMode.NONE
 
 object AnvilFactoryParser {
 
@@ -36,7 +36,7 @@ object AnvilFactoryParser {
   private val minimumAnvilVersion = SemVer(2, 0, 11)
 
   @Suppress("ComplexMethod")
-  fun parse(project: McProject): List<CouldUseAnvilFinding> {
+  suspend fun parse(project: McProject): List<CouldUseAnvilFinding> {
     val anvil = project.anvilGradlePlugin ?: return emptyList()
 
     if (anvil.generateDaggerFactories) return emptyList()
@@ -47,25 +47,25 @@ object AnvilFactoryParser {
 
     if (!hasAnvil) return emptyList()
 
-    val allImports = project.importsForSourceSetName("main".toSourceSetName()) +
-      project.importsForSourceSetName("androidTest".toSourceSetName()) +
-      project.importsForSourceSetName("test".toSourceSetName())
+    val allImports = project.importsForSourceSetName(SourceSetName.MAIN) +
+      project.importsForSourceSetName(SourceSetName.ANDROID_TEST) +
+      project.importsForSourceSetName(SourceSetName.TEST)
 
-    val maybeExtra by lazy(NONE) {
-      project.possibleReferencesForSourceSetName("androidTest".toSourceSetName()) +
-        project.possibleReferencesForSourceSetName("main".toSourceSetName()) +
-        project.possibleReferencesForSourceSetName("test".toSourceSetName())
+    val maybeExtra = lazyDeferred {
+      project.possibleReferencesForSourceSetName(SourceSetName.ANDROID_TEST) +
+        project.possibleReferencesForSourceSetName(SourceSetName.MAIN) +
+        project.possibleReferencesForSourceSetName(SourceSetName.TEST)
     }
 
     val createsComponent = allImports.contains(daggerComponent) ||
       allImports.contains(anvilMergeComponent) ||
-      maybeExtra.contains(daggerComponent) ||
-      maybeExtra.contains(anvilMergeComponent)
+      maybeExtra.await().contains(daggerComponent) ||
+      maybeExtra.await().contains(anvilMergeComponent)
 
     if (createsComponent) return emptyList()
 
     val usesDaggerInJava = project
-      .jvmFilesForSourceSetName("main".toSourceSetName())
+      .jvmFilesForSourceSetName(SourceSetName.MAIN)
       .filterIsInstance<JavaFile>()
       .any { file ->
         file.imports.contains(daggerInject) ||
@@ -77,7 +77,7 @@ object AnvilFactoryParser {
     if (usesDaggerInJava) return emptyList()
 
     val usesDaggerInKotlin = project
-      .jvmFilesForSourceSetName("main".toSourceSetName())
+      .jvmFilesForSourceSetName(SourceSetName.MAIN)
       .filterIsInstance<KotlinFile>()
       .any { file ->
         file.imports.contains(daggerInject) ||
@@ -89,7 +89,7 @@ object AnvilFactoryParser {
     if (!usesDaggerInKotlin) return emptyList()
 
     val couldBeAnvil =
-      !allImports.contains(daggerComponent) && !maybeExtra.contains(daggerComponent)
+      !allImports.contains(daggerComponent) && !maybeExtra.await().contains(daggerComponent)
 
     return if (couldBeAnvil) {
       listOf(CouldUseAnvilFinding(project.buildFile, project.path))

@@ -18,13 +18,12 @@ package modulecheck.core.rule
 import modulecheck.api.ModuleCheckRule
 import modulecheck.api.context.classpathDependencies
 import modulecheck.api.settings.ChecksSettings
+import modulecheck.api.util.mapBlocking
 import modulecheck.core.InheritedDependencyFinding
 import modulecheck.core.context.mustBeApiIn
 import modulecheck.core.internal.uses
 import modulecheck.parsing.McProject
 import modulecheck.parsing.SourceSetName
-import modulecheck.parsing.all
-import modulecheck.parsing.requireSourceOf
 
 class InheritedDependencyRule : ModuleCheckRule<InheritedDependencyFinding> {
 
@@ -32,8 +31,15 @@ class InheritedDependencyRule : ModuleCheckRule<InheritedDependencyFinding> {
   override val description = "Finds project dependencies which are used in the current module, " +
     "but are not actually directly declared as dependencies in the current module"
 
-  override fun check(project: McProject): List<InheritedDependencyFinding> {
-    val used = project.classpathDependencies.all()
+  override suspend fun check(project: McProject): List<InheritedDependencyFinding> {
+
+    val mainDirectDependencies = project.projectDependencies.main()
+      .map { it.project }
+      .toSet()
+
+    val used = project.classpathDependencies().all()
+      .filterNot { it.contributed.project in mainDirectDependencies }
+      .distinctBy { it.contributed.project.path }
       .filter { project.uses(it) }
 
     val dependencyPathCache = mutableMapOf<SourceSetName, Set<String>>()
@@ -44,17 +50,12 @@ class InheritedDependencyRule : ModuleCheckRule<InheritedDependencyFinding> {
     }
 
     return used.asSequence()
-      .filterNot { it.project.path in pathsForSourceSet(it.configurationName.toSourceSetName()) }
+      .filterNot { it.contributed.project.path in pathsForSourceSet(it.source.configurationName.toSourceSetName()) }
       .distinct()
-      .map { inherited ->
+      .mapBlocking { transitive ->
 
-        val source = project
-          .requireSourceOf(
-            dependencyProject = inherited.project,
-            sourceSetName = inherited.configurationName.toSourceSetName(),
-            isTestFixture = inherited.isTestFixture,
-            apiOnly = false
-          )
+        val source = transitive.source
+        val inherited = transitive.contributed
 
         val mustBeApi = inherited.project.mustBeApiIn(project)
 
@@ -71,7 +72,8 @@ class InheritedDependencyRule : ModuleCheckRule<InheritedDependencyFinding> {
           dependencyProject = inherited.project,
           dependencyPath = inherited.project.path,
           configurationName = newConfig,
-          source = source
+          source = source,
+          isTestFixture = inherited.isTestFixture
         )
       }
       .groupBy { it.configurationName }

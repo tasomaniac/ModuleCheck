@@ -13,11 +13,25 @@
  * limitations under the License.
  */
 
-package modulecheck.api
+package modulecheck.core.rule
 
+import modulecheck.api.DepthFinding
+import modulecheck.api.ModuleCheckRule
+import modulecheck.api.context.depthForSourceSetName
+import modulecheck.api.settings.ChecksSettings
 import modulecheck.parsing.McProject
 
-fun interface FindingFactory<T : Finding> {
+class DepthRule : ModuleCheckRule<DepthFinding> {
 
-  suspend fun evaluate(projects: List<McProject>): List<T>
+  override val id = "Depth"
+  override val description = "The longest path between this module and its leaf nodes"
+
+  override suspend fun check(project: McProject): List<DepthFinding> {
+    return project.sourceSets.keys
+      .map { project.depthForSourceSetName(it) }
+  }
+
+  override fun shouldApply(checksSettings: ChecksSettings): Boolean {
+    return checksSettings.depths
+  }
 }

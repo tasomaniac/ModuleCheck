@@ -21,7 +21,6 @@ import modulecheck.core.DependencyFinding
 import modulecheck.parsing.ConfigurationName
 import modulecheck.parsing.McProject
 import modulecheck.parsing.ProjectContext
-import modulecheck.parsing.asConfigurationName
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
@@ -62,9 +61,9 @@ data class RedundantDependencies(
     get() = Key
 
   companion object Key : ProjectContext.Key<RedundantDependencies> {
-    override operator fun invoke(project: McProject): RedundantDependencies {
+    override suspend operator fun invoke(project: McProject): RedundantDependencies {
       val allApi = project
-        .projectDependencies["api".asConfigurationName()]
+        .projectDependencies[ConfigurationName.api]
         .orEmpty()
         .toSet()
 
@@ -74,7 +73,7 @@ data class RedundantDependencies(
         .flatMap {
           it
             .project
-            .publicDependencies
+            .publicDependencies()
             .map { it.project }
             .toSet()
         }
@@ -105,4 +104,5 @@ data class RedundantDependencies(
   }
 }
 
-val ProjectContext.redundantDependencies: RedundantDependencies get() = get(RedundantDependencies)
+suspend fun ProjectContext.redundantDependencies(): RedundantDependencies =
+  get(RedundantDependencies)

@@ -20,10 +20,10 @@ import modulecheck.parsing.ProjectContext.Key
 import java.util.concurrent.ConcurrentHashMap
 
 interface ProjectContext {
-  operator fun <E : Element> get(key: Key<E>): E
+  suspend fun <E : Element> get(key: Key<E>): E
 
   interface Key<E : Element> {
-    operator fun invoke(project: McProject): E
+    suspend operator fun invoke(project: McProject): E
   }
 
   interface Element {
@@ -31,11 +31,11 @@ interface ProjectContext {
   }
 }
 
-class ProjectContextImpl(val project: McProject) : ProjectContext {
+class RealProjectContext(val project: McProject) : ProjectContext {
 
-  private val cache = ConcurrentHashMap<ProjectContext.Key<*>, ProjectContext.Element>()
+  private val cache = ConcurrentHashMap<Key<*>, Element>()
 
-  override operator fun <E : Element> get(key: Key<E>): E {
+  override suspend fun <E : Element> get(key: Key<E>): E {
     @Suppress("UNCHECKED_CAST")
     return cache.getOrPut(key) { key.invoke(project) } as E
   }
