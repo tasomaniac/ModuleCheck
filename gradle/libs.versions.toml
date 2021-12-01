@@ -34,7 +34,7 @@ hermit = "0.9.5"
 jUnit = "5.8.2"
 knit = "0.3.0"
 kotest = "5.0.1"
-kotlin = "1.5.32"
+kotlin = "1.6.0"
 
 kotlinx-atomicfu = "0.16.3"
 kotlinx-coroutines = "1.5.2"
