@@ -33,7 +33,7 @@ dependencies {
   implementation(libs.antlr.core)
   implementation(libs.antlr.runtime)
   implementation(libs.groovy)
-    implementation(libs.kotlin.compiler)
+  implementation(libs.kotlin.compiler)
   implementation(libs.kotlin.reflect)
 
   testImplementation(libs.bundles.hermit)

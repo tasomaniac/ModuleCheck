@@ -17,14 +17,14 @@ package modulecheck.parsing.java
 
 import kotlinx.coroutines.runBlocking
 import modulecheck.parsing.gradle.SourceSetName
-import modulecheck.parsing.source.DeclarationName
-import modulecheck.parsing.source.JavaVersion.VERSION_14
+import modulecheck.parsing.source.JavaVersion
 import modulecheck.project.test.ProjectTest
 import org.intellij.lang.annotations.Language
 import org.junit.jupiter.api.Test
 import java.io.File
 
-internal class JavaFileTest : ProjectTest(),
+internal class JavaFileTest :
+  ProjectTest(),
   JavaFileTestUtils by RealJavaFileTestUtils() {
 
   @Test
@@ -38,10 +38,12 @@ internal class JavaFileTest : ProjectTest(),
       """
     )
 
-    file.declarations shouldBe listOf(
-      DeclarationName("com.test.Color"),
-      DeclarationName("com.test.Color.RED"),
-      DeclarationName("com.test.Color.BLUE")
+    file shouldBe javaFile(
+      declarations = setOf(
+        "com.test.Color",
+        "com.test.Color.RED",
+        "com.test.Color.BLUE"
+      )
     )
   }
 
@@ -58,11 +60,13 @@ internal class JavaFileTest : ProjectTest(),
       """
     )
 
-    file.declarations shouldBe listOf(
-      DeclarationName("com.test.Constants"),
-      DeclarationName("com.test.Constants.Color"),
-      DeclarationName("com.test.Constants.Color.RED"),
-      DeclarationName("com.test.Constants.Color.BLUE")
+    file shouldBe javaFile(
+      declarations = setOf(
+        "com.test.Constants",
+        "com.test.Constants.Color",
+        "com.test.Constants.Color.RED",
+        "com.test.Constants.Color.BLUE"
+      )
     )
   }
 
@@ -80,9 +84,12 @@ internal class JavaFileTest : ProjectTest(),
       """
     )
 
-    file.declarations shouldBe listOf(
-      DeclarationName("com.test.Constants"),
-      DeclarationName("com.test.Constants.MY_VALUE")
+    file shouldBe javaFile(
+      declarations = setOf(
+        "com.test.Constants",
+        "com.test.Constants",
+        "com.test.Constants.MY_VALUE"
+      )
     )
   }
 
@@ -103,10 +110,12 @@ internal class JavaFileTest : ProjectTest(),
       """
     )
 
-    file.declarations shouldBe listOf(
-      DeclarationName("com.test.Constants"),
-      DeclarationName("com.test.Constants.Values"),
-      DeclarationName("com.test.Constants.Values.MY_VALUE")
+    file shouldBe javaFile(
+      declarations = setOf(
+        "com.test.Constants",
+        "com.test.Constants.Values",
+        "com.test.Constants.Values.MY_VALUE"
+      )
     )
   }
 
@@ -124,9 +133,101 @@ internal class JavaFileTest : ProjectTest(),
       """
     )
 
-    file.declarations shouldBe listOf(
-      DeclarationName("com.test.Utils"),
-      DeclarationName("com.test.Utils.foo")
+    file shouldBe javaFile(
+      declarations = setOf(
+        "com.test.Utils", "com.test.Utils.foo"
+      )
+    )
+  }
+
+  @Test
+  fun `public function return type should count as api reference`() {
+
+    val file = file(
+      """
+    package com.test;
+
+    import com.lib1.Lib1Class;
+
+    public class Utils {
+
+      public Lib1Class foo() { return Lib1Class(); }
+    }
+      """
+    )
+
+    file shouldBe javaFile(
+      imports = setOf("com.lib1.Lib1Class"),
+      declarations = setOf("com.test.Utils"),
+      apiReferences = setOf("com.lib1.Lib1Class")
+    )
+  }
+
+  @Test
+  fun `public function with wildcard-imported return type should count as api reference`() {
+
+    val file = file(
+      """
+    package com.test;
+
+    import com.lib1.*;
+
+    public class Utils {
+
+      public Lib1Class foo() { return Lib1Class(); }
+    }
+      """
+    )
+
+    file shouldBe javaFile(
+      imports = setOf("com.lib1.Lib1Class"),
+      declarations = setOf("com.test.Utils"),
+      apiReferences = setOf("com.lib1.Lib1Class")
+    )
+  }
+
+  @Test
+  fun `public function with fully qualified return type should count as api reference`() {
+
+    val file = file(
+      """
+    package com.test;
+
+    public class Utils {
+
+      public com.lib1.Lib1Class foo() { return Lib1Class(); }
+    }
+      """
+    )
+
+    file shouldBe javaFile(
+      declarations = setOf("com.test.Utils"),
+      apiReferences = setOf("com.lib1.Lib1Class"),
+      maybeExtraReferences = setOf("com.lib1.Lib1Class", "com.test.com.lib1.Lib1Class")
+    )
+  }
+
+  @Test
+  fun `public function generic return type should count as api reference`() {
+
+    val file = file(
+      """
+    package com.test;
+
+    import com.lib1.Lib1Class;
+    import java.util.List;
+
+    public class Utils {
+
+      public List<Lib1Class> foo() { return null; }
+    }
+      """
+    )
+
+    file shouldBe javaFile(
+      imports = setOf("com.lib1.Lib1Class", "java.util.List"),
+      declarations = setOf("com.test.Utils"),
+      apiReferences = setOf("com.lib1.Lib1Class", "java.util.List")
     )
   }
 
@@ -146,14 +247,14 @@ internal class JavaFileTest : ProjectTest(),
       """
     )
 
-    file.declarations shouldBe listOf(
-      DeclarationName("com.test.Utils")
-    )
-    file.imports shouldBe listOf()
-    file.maybeExtraReferences.await() shouldBe listOf(
-      "Lib1Class",
-      "com.lib1.Lib1Class",
-      "com.test.Lib1Class"
+    file shouldBe javaFile(
+      declarations = setOf("com.test.Utils"),
+      wildcardImports = setOf("com.lib1"),
+      maybeExtraReferences = setOf(
+        "Lib1Class",
+        "com.lib1.Lib1Class",
+        "com.test.Lib1Class"
+      )
     )
   }
 
@@ -175,16 +276,37 @@ internal class JavaFileTest : ProjectTest(),
       """
       )
 
-      file.declarations shouldBe listOf(
-        DeclarationName("com.test.Utils")
-      )
-      file.imports shouldBe listOf("java.util.List")
-      file.maybeExtraReferences.await() shouldBe listOf(
-        "Lib1Class",
-        "com.lib1.Lib1Class",
-        "com.test.Lib1Class"
+      file shouldBe javaFile(
+        imports = setOf("java.util.List"),
+        declarations = setOf("com.test.Utils"),
+        wildcardImports = setOf("com.lib1"),
+        maybeExtraReferences = setOf(
+          "Lib1Class",
+          "com.lib1.Lib1Class",
+          "com.test.Lib1Class"
+        )
       )
     }
+
+  @Test
+  fun `a record should count as a declaration`() {
+
+    val file = file(
+      """
+    package com.test;
+
+    import com.lib1.Lib1Class;
+
+    public static record MyRecord(Lib1Class lib1Class) {}
+      """,
+      javaVersion = JavaVersion.VERSION_16
+    )
+
+    file shouldBe javaFile(
+      imports = setOf("com.lib1.Lib1Class"),
+      declarations = setOf("com.test.MyRecord")
+    )
+  }
 
   fun simpleProject() = project(":lib") {
     addSource(
@@ -200,13 +322,14 @@ internal class JavaFileTest : ProjectTest(),
 
   fun file(
     @Language("java")
-    content: String
+    content: String,
+    javaVersion: JavaVersion = JavaVersion.VERSION_14
   ): RealJavaFile {
     testProjectDir.mkdirs()
 
     val file = File(testProjectDir, "JavaFile.java")
       .also { it.writeText(content.trimIndent()) }
 
-    return RealJavaFile(file, VERSION_14)
+    return RealJavaFile(file, javaVersion)
   }
 }

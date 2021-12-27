@@ -20,6 +20,8 @@ import modulecheck.parsing.source.DeclarationName
 import modulecheck.parsing.source.JavaFile
 import modulecheck.testing.trimmedShouldBe
 import modulecheck.utils.lazyDeferred
+import modulecheck.utils.mapToSet
+import org.jetbrains.kotlin.name.FqName
 
 data class TestJavaFile(
   override val name: String,
@@ -27,9 +29,13 @@ data class TestJavaFile(
   override val imports: Set<String>,
   override val declarations: Set<DeclarationName>,
   override val wildcardImports: Set<String>,
-  val maybeExtraReferencesSet: Set<String>
+  val maybeExtraReferencesSet: Set<String>,
+  val apiReferencesStrings: Set<String>
 ) : JavaFile {
+
   override val maybeExtraReferences = lazyDeferred { maybeExtraReferencesSet }
+
+  override val apiReferences: Set<FqName> = apiReferencesStrings.mapToSet { FqName(it) }
 }
 
 interface JavaFileTestUtils {
@@ -42,7 +48,8 @@ interface JavaFileTestUtils {
     imports: Set<String> = emptySet(),
     declarations: Set<String> = emptySet(),
     wildcardImports: Set<String> = emptySet(),
-    maybeExtraReferences: Set<String> = emptySet()
+    maybeExtraReferences: Set<String> = emptySet(),
+    apiReferences: Set<String> = emptySet()
   ): TestJavaFile
 
   fun JavaFile.toTestFile(): TestJavaFile
@@ -61,14 +68,16 @@ class RealJavaFileTestUtils : JavaFileTestUtils {
     imports: Set<String>,
     declarations: Set<String>,
     wildcardImports: Set<String>,
-    maybeExtraReferences: Set<String>
+    maybeExtraReferences: Set<String>,
+    apiReferences: Set<String>
   ): TestJavaFile = TestJavaFile(
     name = name,
     packageFqName = packageFqName,
     imports = imports,
     declarations = declarations.map { DeclarationName(it) }.toSet(),
     wildcardImports = wildcardImports,
-    maybeExtraReferencesSet = maybeExtraReferences
+    maybeExtraReferencesSet = maybeExtraReferences,
+    apiReferencesStrings = apiReferences
   )
 
   override fun JavaFile.toTestFile(): TestJavaFile = (this as? TestJavaFile)
@@ -79,7 +88,8 @@ class RealJavaFileTestUtils : JavaFileTestUtils {
         imports = imports,
         declarations = declarations,
         wildcardImports = wildcardImports,
-        maybeExtraReferencesSet = maybeExtraReferences.await()
+        maybeExtraReferencesSet = maybeExtraReferences.await(),
+        apiReferencesStrings = apiReferences.mapToSet { it.asString() }
       )
     }
 }

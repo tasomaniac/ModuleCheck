@@ -17,19 +17,17 @@ package modulecheck.parsing.java
 
 import com.github.javaparser.ParserConfiguration.LanguageLevel
 import com.github.javaparser.StaticJavaParser
+import com.github.javaparser.ast.CompilationUnit
 import com.github.javaparser.ast.ImportDeclaration
-import com.github.javaparser.ast.Node
 import com.github.javaparser.ast.body.EnumConstantDeclaration
 import com.github.javaparser.ast.body.FieldDeclaration
 import com.github.javaparser.ast.body.MethodDeclaration
 import com.github.javaparser.ast.body.TypeDeclaration
-import com.github.javaparser.ast.body.VariableDeclarator
-import com.github.javaparser.ast.expr.SimpleName
 import com.github.javaparser.ast.nodeTypes.modifiers.NodeWithPrivateModifier
 import com.github.javaparser.ast.nodeTypes.modifiers.NodeWithStaticModifier
 import com.github.javaparser.ast.type.ClassOrInterfaceType
+import com.github.javaparser.ast.type.Type
 import com.github.javaparser.resolution.Resolvable
-import com.github.javaparser.resolution.declarations.ResolvedDeclaration
 import com.github.javaparser.symbolsolver.JavaSymbolSolver
 import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver
@@ -60,18 +58,19 @@ import modulecheck.parsing.source.JavaVersion.VERSION_HIGHER
 import modulecheck.parsing.source.asDeclarationName
 import modulecheck.utils.LazyDeferred
 import modulecheck.utils.lazyDeferred
+import modulecheck.utils.mapToSet
 import org.jetbrains.kotlin.name.FqName
 import java.io.File
 import kotlin.contracts.contract
 
 class RealJavaFile(
   val file: File,
-  val javaVersion: JavaVersion
+  private val javaVersion: JavaVersion
 ) : JavaFile {
 
   override val name = file.name
 
-  private val parsed by lazy {
+  private val compilationUnit: CompilationUnit by lazy {
 
     // Set up a minimal type solver that only looks at the classes used to run this sample.
     val combinedTypeSolver = CombinedTypeSolver()
@@ -90,52 +89,22 @@ class RealJavaFile(
         languageLevel = javaVersion.toLanguageLevel()
       }
 
-    val ll = StaticJavaParser.getConfiguration().languageLevel
 
-    println("language level --> $ll")
+    StaticJavaParser.parse(file)
+  }
+
+  private val parsed by lazy {
+
+    val packageFqName = compilationUnit.packageDeclaration.get().nameAsString
+    val imports = compilationUnit.imports
 
     val classOrInterfaceTypes = mutableSetOf<ClassOrInterfaceType>()
     val typeDeclarations = mutableListOf<TypeDeclaration<*>>()
     val memberDeclarations = mutableSetOf<DeclarationName>()
     val enumDeclarations = mutableSetOf<DeclarationName>()
 
-    val packageFqName: String
-    val imports: List<ImportDeclaration>
-
-    // This is a band-aid for JavaParser's lack of support for Java Records.  Parsing a file with
-    // records will just throw an exception...
-    val compilationUnit = StaticJavaParser.parse(file)
-    // val compilationUnit = runCatching { StaticJavaParser.parse(file) }.getOrNull()
-
-    if (compilationUnit != null) {
-
-      packageFqName = compilationUnit.packageDeclaration.get().nameAsString
-      imports = compilationUnit.imports
-    } else {
-      // If parsing fails because of Records, use simple Regex parsing to get imports and package.
-      val namePartReg = "\\p{javaJavaIdentifierStart}\\p{javaJavaIdentifierPart}*"
-
-      val packageReg = "\\s*package\\s+($namePartReg(?:\\.$namePartReg)*);".toRegex()
-      val importReg = "\\s*import\\s+((?:static\\s+)?)($namePartReg(?:\\.$namePartReg)*);".toRegex()
-
-      val text = file.readText()
-
-      packageFqName = packageReg.find(text)
-        ?.destructured
-        ?.component1() ?: ""
-
-      imports = importReg.findAll(text)
-        .map { it.destructured }
-        .map { (static, name) ->
-          val isStatic = static.isNotBlank()
-          val isAsterisk = name.endsWith(".*")
-          ImportDeclaration(name, isStatic, isAsterisk)
-        }
-        .toList()
-    }
-
-    compilationUnit?.childrenRecursive()
-      ?.forEach { node ->
+    compilationUnit.childrenRecursive()
+      .forEach { node ->
 
         when (node) {
           is ClassOrInterfaceType -> classOrInterfaceTypes.add(node)
@@ -160,7 +129,7 @@ class RealJavaFile(
     ParsedFile(
       packageFqName = packageFqName,
       imports = imports,
-      classOrInterfaceTypes = classOrInterfaceTypes.mapTo(mutableSetOf()) { FqName(it.nameWithScope) },
+      classOrInterfaceTypes = classOrInterfaceTypes.mapToSet { FqName(it.nameWithScope) },
       typeDeclarations = typeDeclarations.distinct(),
       fieldDeclarations = memberDeclarations,
       enumDeclarations = enumDeclarations
@@ -197,10 +166,24 @@ class RealJavaFile(
       .toSet()
   }
 
+  private val typeReferenceNames: Set<String> by lazy {
+    val classOrInterfaceTypeParents = compilationUnit
+      .getChildrenOfTypeRecursive<ClassOrInterfaceType>()
+      .filterNot { it.parentNode.getOrNull() is ClassOrInterfaceType }
+
+    val classNames = classOrInterfaceTypeParents.map { it.nameWithScope }
+
+    val typeArgs = classOrInterfaceTypeParents.flatMap { it.typeArgumentsRecursive() }
+      .filterIsInstance<ClassOrInterfaceType>()
+      .map { it.nameWithScope }
+      .toSet()
+
+    typeArgs + classNames
+  }
+
   override val maybeExtraReferences: LazyDeferred<Set<String>> = lazyDeferred {
 
-    val unresolved = parsed.classOrInterfaceTypes
-      .map { it.asString() }
+    val unresolved = typeReferenceNames
       .filter { name -> imports.none { import -> import.endsWith(name) } }
 
     val all = unresolved + unresolved.flatMap { reference ->
@@ -210,47 +193,79 @@ class RealJavaFile(
     all.toSet()
   }
 
-  private fun <T, R : ResolvedDeclaration> T.fqName(
-    typeDeclarations: List<TypeDeclaration<*>>
-  ): String
-    where T : Node, T : Resolvable<R> {
-    val simpleName = when (this) {
-      is MethodDeclaration -> name.asString()
-      is FieldDeclaration -> requireChildOfType<VariableDeclarator>().nameAsString
-      is EnumConstantDeclaration -> nameAsString
-      else -> {
+  override val apiReferences: Set<FqName> by lazy {
 
-        println(
-          """~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  the problem node  -- ${this::class}
-          |$this
-          |_____________________--
-        """.trimMargin()
-        )
+    val simpleRefs = mutableSetOf<String>()
 
-        printEverything()
+    compilationUnit.childrenRecursive()
+      .mapNotNull { node ->
 
-        kotlin.runCatching { resolve().name }
-          .getOrNull()
-          ?: simpleName()
+        when (node) {
+          is MethodDeclaration -> {
+
+            simpleRefs.addAll(node.apiReferences())
+          }
+          else -> null
+        }
+      }
+      .toList()
+
+    val (resolved, unresolved) = simpleRefs.map { reference ->
+      imports.firstOrNull { it.endsWith(reference) } ?: reference
+    }.partition { it in imports }
+
+    val replacedWildcards = wildcardImports.flatMap { wildcardImport ->
+
+      unresolved.map { apiReference ->
+        "$wildcardImport.$apiReference"
       }
     }
 
-    val parentTypeFqName = typeDeclarations
-      .last { isDescendantOf(it) }
-      .fullyQualifiedName.get()
-    return "$parentTypeFqName.$simpleName"
-  }
-
-  private fun <T : Node> T.simpleName(): String {
-
-    return if (this is SimpleName) {
-      asString()
-    } else {
-      getChildrenOfTypeRecursive<SimpleName>()
-        .first()
-        .asString()
+    val simple = unresolved + unresolved.map {
+      "$packageFqName.$it"
     }
+
+    (resolved + simple + replacedWildcards)
+      .mapToSet { FqName(it) }
   }
+}
+
+fun ClassOrInterfaceType.typeArgumentsRecursive(): Sequence<Type> {
+
+  val seed = typeArguments.getOrNull()?.asSequence()
+    ?: return emptySequence()
+
+  return generateSequence(seed) { types ->
+    types.flatMap { type ->
+      type.toClassOrInterfaceType()
+        .getOrNull()
+        ?.typeArguments
+        ?.getOrNull()
+        ?.asSequence()
+        .orEmpty()
+    }
+      .filterNotNull()
+      .takeIf { it.firstOrNull() != null }
+  }
+    .flatten()
+}
+
+fun MethodDeclaration.apiReferences(): List<String> {
+
+  if (!(isProtected || isPublic)) return emptyList()
+
+  val returnTypes: Sequence<String> = type.getChildrenOfTypeRecursive<ClassOrInterfaceType>()
+    .filterNot { it.parentNode.getOrNull() is ClassOrInterfaceType }
+    .flatMap { classType ->
+      classType.typeArgumentsRecursive()
+        .filterIsInstance<ClassOrInterfaceType>()
+        .map { it.nameWithScope } + classType.nameWithScope
+    }
+
+
+  typeParameters
+
+  return returnTypes.toList()
 }
 
 fun <T> T.canBeImported(): Boolean
@@ -279,12 +294,12 @@ internal fun JavaVersion.toLanguageLevel(): LanguageLevel {
     VERSION_12 -> LanguageLevel.JAVA_12
     VERSION_13 -> LanguageLevel.JAVA_13
     VERSION_14 -> LanguageLevel.JAVA_14
-    VERSION_15 -> LanguageLevel.JAVA_15
-    VERSION_16 -> LanguageLevel.JAVA_16
-    VERSION_17 -> LanguageLevel.JAVA_17
-    // VERSION_15 -> LanguageLevel.RAW
-    // VERSION_16 -> LanguageLevel.RAW
-    // VERSION_17 -> LanguageLevel.RAW
+    // VERSION_15 -> LanguageLevel.JAVA_15
+    // VERSION_16 -> LanguageLevel.JAVA_16
+    // VERSION_17 -> LanguageLevel.JAVA_17
+    VERSION_15 -> LanguageLevel.CURRENT
+    VERSION_16 -> LanguageLevel.CURRENT
+    VERSION_17 -> LanguageLevel.CURRENT
     VERSION_18 -> LanguageLevel.CURRENT
     VERSION_19 -> LanguageLevel.CURRENT
     VERSION_20 -> LanguageLevel.CURRENT

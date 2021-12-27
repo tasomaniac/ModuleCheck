@@ -25,7 +25,6 @@ import modulecheck.parsing.psi.internal.PsiElementResolver
 import modulecheck.parsing.psi.internal.asKtFile
 import modulecheck.parsing.psi.internal.isKotlinFile
 import modulecheck.parsing.psi.internal.isKtFile
-import modulecheck.parsing.source.JavaVersion.VERSION_14
 import modulecheck.parsing.source.JvmFile
 import modulecheck.project.JvmFileProvider
 import modulecheck.project.McProject

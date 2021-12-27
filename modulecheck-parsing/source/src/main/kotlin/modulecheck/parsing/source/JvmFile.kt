@@ -16,6 +16,7 @@
 package modulecheck.parsing.source
 
 import modulecheck.utils.LazyDeferred
+import org.jetbrains.kotlin.name.FqName
 
 interface JvmFile {
   val name: String
@@ -42,7 +43,9 @@ interface KotlinFile : JvmFile {
   )
 }
 
-interface JavaFile : JvmFile
+interface JavaFile : JvmFile {
+  val apiReferences: Set<FqName>
+}
 
 enum class JavaVersion {
   VERSION_1_1,

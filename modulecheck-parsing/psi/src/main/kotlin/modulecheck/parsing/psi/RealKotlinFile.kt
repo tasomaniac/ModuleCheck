@@ -90,16 +90,16 @@ class RealKotlinFile(
 
     val apiRefsAsStrings = referenceVisitor.apiReferences.map { it.text }
 
-    val replacedWildcards = wildcardImports.flatMap { wildcardImport ->
-
-      apiRefsAsStrings.map { apiReference ->
-        wildcardImport.replace("*", apiReference)
-      }
-    }
-
     val (resolved, unresolved) = apiRefsAsStrings.map { reference ->
       imports.firstOrNull { it.endsWith(reference) } ?: reference
     }.partition { it in imports }
+
+    val replacedWildcards = wildcardImports.flatMap { wildcardImport ->
+
+      unresolved.map { apiReference ->
+        "$wildcardImport.$apiReference"
+      }
+    }
 
     val simple = unresolved + unresolved.map {
       ktFile.packageFqName.asString() + "." + it

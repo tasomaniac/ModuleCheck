@@ -16,6 +16,14 @@
 package modulecheck.parsing.java
 
 import com.github.javaparser.ast.Node
+import com.github.javaparser.ast.body.EnumConstantDeclaration
+import com.github.javaparser.ast.body.FieldDeclaration
+import com.github.javaparser.ast.body.MethodDeclaration
+import com.github.javaparser.ast.body.TypeDeclaration
+import com.github.javaparser.ast.body.VariableDeclarator
+import com.github.javaparser.ast.expr.SimpleName
+import com.github.javaparser.resolution.Resolvable
+import com.github.javaparser.resolution.declarations.ResolvedDeclaration
 
 internal inline fun Node.visit(
   crossinline predicate: (node: Node) -> Boolean
@@ -50,4 +58,37 @@ fun Node.childrenRecursive(): Sequence<Node> {
 inline fun <reified T : Node> Node.getChildrenOfTypeRecursive(): Sequence<T> {
   return childrenRecursive()
     .filterIsInstance<T>()
+}
+
+fun <T, R : ResolvedDeclaration> T.fqName(
+  typeDeclarations: List<TypeDeclaration<*>>
+): String
+  where T : Node, T : Resolvable<R> {
+  val simpleName = when (this) {
+    is MethodDeclaration -> name.asString()
+    is FieldDeclaration -> requireChildOfType<VariableDeclarator>().nameAsString
+    is EnumConstantDeclaration -> nameAsString
+    else -> {
+
+      kotlin.runCatching { resolve().name }
+        .getOrNull()
+        ?: simpleName()
+    }
+  }
+
+  val parentTypeFqName = typeDeclarations
+    .last { isDescendantOf(it) }
+    .fullyQualifiedName.get()
+  return "$parentTypeFqName.$simpleName"
+}
+
+fun <T : Node> T.simpleName(): String {
+
+  return if (this is SimpleName) {
+    asString()
+  } else {
+    getChildrenOfTypeRecursive<SimpleName>()
+      .first()
+      .asString()
+  }
 }
