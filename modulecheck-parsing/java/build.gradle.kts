@@ -30,11 +30,8 @@ dependencies {
 
   compileOnly(gradleApi())
 
-  compileOnly("org.codehaus.groovy:groovy-xml:3.0.9")
-
-  implementation(libs.agp)
-  implementation(libs.groovy)
-  implementation(libs.javaParser)
+  implementation(libs.javaParser.symbols)
+  implementation(libs.javaParser.core)
   implementation(libs.kotlin.reflect)
 
   testImplementation(libs.bundles.hermit)
@@ -45,4 +42,12 @@ dependencies {
   testImplementation(project(path = ":modulecheck-parsing:java"))
 
   testImplementation(testFixtures(project(path = ":modulecheck-project:api")))
+}
+
+configurations.all {
+  resolutionStrategy {
+
+    force(libs.javaParser.core)
+    force(libs.javaParser.symbols)
+  }
 }

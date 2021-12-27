@@ -15,39 +15,42 @@
 
 package modulecheck.parsing.java
 
+import kotlinx.coroutines.runBlocking
 import modulecheck.parsing.gradle.SourceSetName
 import modulecheck.parsing.source.DeclarationName
+import modulecheck.parsing.source.JavaVersion.VERSION_14
 import modulecheck.project.test.ProjectTest
 import org.intellij.lang.annotations.Language
 import org.junit.jupiter.api.Test
 import java.io.File
 
-internal class JavaFileTest : ProjectTest() {
+internal class JavaFileTest : ProjectTest(),
+  JavaFileTestUtils by RealJavaFileTestUtils() {
 
   @Test
   fun `enum constants should count as declarations`() {
 
-    val javaFile = file(
+    val file = file(
       """
-    package com.example;
+    package com.test;
 
     public enum Color { RED, BLUE }
       """
     )
 
-    javaFile.declarations shouldBe listOf(
-      DeclarationName("com.example.Color"),
-      DeclarationName("com.example.Color.RED"),
-      DeclarationName("com.example.Color.BLUE")
+    file.declarations shouldBe listOf(
+      DeclarationName("com.test.Color"),
+      DeclarationName("com.test.Color.RED"),
+      DeclarationName("com.test.Color.BLUE")
     )
   }
 
   @Test
   fun `nested enum constants should count as declarations`() {
 
-    val javaFile = file(
+    val file = file(
       """
-    package com.example;
+    package com.test;
 
     public class Constants {
       public enum Color { RED, BLUE }
@@ -55,20 +58,20 @@ internal class JavaFileTest : ProjectTest() {
       """
     )
 
-    javaFile.declarations shouldBe listOf(
-      DeclarationName("com.example.Constants"),
-      DeclarationName("com.example.Constants.Color"),
-      DeclarationName("com.example.Constants.Color.RED"),
-      DeclarationName("com.example.Constants.Color.BLUE")
+    file.declarations shouldBe listOf(
+      DeclarationName("com.test.Constants"),
+      DeclarationName("com.test.Constants.Color"),
+      DeclarationName("com.test.Constants.Color.RED"),
+      DeclarationName("com.test.Constants.Color.BLUE")
     )
   }
 
   @Test
   fun `declared constants should count as declarations`() {
 
-    val javaFile = file(
+    val file = file(
       """
-    package com.example;
+    package com.test;
 
     public class Constants {
 
@@ -77,18 +80,18 @@ internal class JavaFileTest : ProjectTest() {
       """
     )
 
-    javaFile.declarations shouldBe listOf(
-      DeclarationName("com.example.Constants"),
-      DeclarationName("com.example.Constants.MY_VALUE")
+    file.declarations shouldBe listOf(
+      DeclarationName("com.test.Constants"),
+      DeclarationName("com.test.Constants.MY_VALUE")
     )
   }
 
   @Test
   fun `declared nested constants should count as declarations`() {
 
-    val javaFile = file(
+    val file = file(
       """
-    package com.example;
+    package com.test;
 
     public class Constants {
 
@@ -100,12 +103,88 @@ internal class JavaFileTest : ProjectTest() {
       """
     )
 
-    javaFile.declarations shouldBe listOf(
-      DeclarationName("com.example.Constants"),
-      DeclarationName("com.example.Constants.Values"),
-      DeclarationName("com.example.Constants.Values.MY_VALUE")
+    file.declarations shouldBe listOf(
+      DeclarationName("com.test.Constants"),
+      DeclarationName("com.test.Constants.Values"),
+      DeclarationName("com.test.Constants.Values.MY_VALUE")
     )
   }
+
+  @Test
+  fun `public static functions should count as declarations`() {
+
+    val file = file(
+      """
+    package com.test;
+
+    public class Utils {
+
+      public static void foo() {}
+    }
+      """
+    )
+
+    file.declarations shouldBe listOf(
+      DeclarationName("com.test.Utils"),
+      DeclarationName("com.test.Utils.foo")
+    )
+  }
+
+  @Test
+  fun `public member property type with wildcard import should count as reference`() = runBlocking {
+
+    val file = file(
+      """
+    package com.test;
+
+    import com.lib1.*;
+
+    public class Utils {
+
+      public Lib1Class lib1Class;
+    }
+      """
+    )
+
+    file.declarations shouldBe listOf(
+      DeclarationName("com.test.Utils")
+    )
+    file.imports shouldBe listOf()
+    file.maybeExtraReferences.await() shouldBe listOf(
+      "Lib1Class",
+      "com.lib1.Lib1Class",
+      "com.test.Lib1Class"
+    )
+  }
+
+  @Test
+  fun `public member property generic type with wildcard import should count as reference`() =
+    runBlocking {
+
+      val file = file(
+        """
+    package com.test;
+
+    import com.lib1.*;
+    import java.util.List;
+
+    public class Utils {
+
+      public List<Lib1Class> lib1Classes;
+    }
+      """
+      )
+
+      file.declarations shouldBe listOf(
+        DeclarationName("com.test.Utils")
+      )
+      file.imports shouldBe listOf("java.util.List")
+      file.maybeExtraReferences.await() shouldBe listOf(
+        "Lib1Class",
+        "com.lib1.Lib1Class",
+        "com.test.Lib1Class"
+      )
+    }
 
   fun simpleProject() = project(":lib") {
     addSource(
@@ -125,9 +204,9 @@ internal class JavaFileTest : ProjectTest() {
   ): RealJavaFile {
     testProjectDir.mkdirs()
 
-    val javaFile = File(testProjectDir, "javaFile.java")
+    val file = File(testProjectDir, "JavaFile.java")
       .also { it.writeText(content.trimIndent()) }
 
-    return RealJavaFile(javaFile)
+    return RealJavaFile(file, VERSION_14)
   }
 }

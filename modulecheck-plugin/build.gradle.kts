@@ -47,9 +47,10 @@ dependencies {
   api(project(path = ":modulecheck-project:impl"))
   api(project(path = ":modulecheck-runtime"))
 
+  compileOnly(gradleApi())
+
   implementation(libs.agp)
-  implementation(libs.javaParser)
-  implementation(libs.kotlin.gradle.plug)
+    implementation(libs.kotlin.gradle.plug)
   implementation(libs.kotlin.gradle.plugin.api)
   implementation(libs.kotlin.reflect)
   implementation(libs.semVer)
