@@ -19,15 +19,18 @@ import com.github.javaparser.ParserConfiguration.LanguageLevel
 import com.github.javaparser.StaticJavaParser
 import com.github.javaparser.ast.CompilationUnit
 import com.github.javaparser.ast.ImportDeclaration
+import com.github.javaparser.ast.Node
 import com.github.javaparser.ast.body.EnumConstantDeclaration
 import com.github.javaparser.ast.body.FieldDeclaration
 import com.github.javaparser.ast.body.MethodDeclaration
 import com.github.javaparser.ast.body.TypeDeclaration
+import com.github.javaparser.ast.nodeTypes.NodeWithTypeParameters
 import com.github.javaparser.ast.nodeTypes.modifiers.NodeWithPrivateModifier
 import com.github.javaparser.ast.nodeTypes.modifiers.NodeWithStaticModifier
 import com.github.javaparser.ast.type.ClassOrInterfaceType
 import com.github.javaparser.ast.type.Type
 import com.github.javaparser.resolution.Resolvable
+import com.github.javaparser.resolution.UnsolvedSymbolException
 import com.github.javaparser.symbolsolver.JavaSymbolSolver
 import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver
@@ -88,7 +91,6 @@ class RealJavaFile(
         setSymbolResolver(symbolSolver)
         languageLevel = javaVersion.toLanguageLevel()
       }
-
 
     StaticJavaParser.parse(file)
   }
@@ -167,18 +169,21 @@ class RealJavaFile(
   }
 
   private val typeReferenceNames: Set<String> by lazy {
-    val classOrInterfaceTypeParents = compilationUnit
+
+    compilationUnit
       .getChildrenOfTypeRecursive<ClassOrInterfaceType>()
+      // A qualified type like `com.Foo` will have a nested ClassOrInterfaceType of `com`.
+      // Filter out those nested types, since they seem like they're always just noise.
       .filterNot { it.parentNode.getOrNull() is ClassOrInterfaceType }
+      .flatMap { it.typeReferencesRecursive() }
+      .mapNotNull { type ->
 
-    val classNames = classOrInterfaceTypeParents.map { it.nameWithScope }
+        val typeNames = type.getTypeParameterNamesInScope().toSet()
 
-    val typeArgs = classOrInterfaceTypeParents.flatMap { it.typeArgumentsRecursive() }
-      .filterIsInstance<ClassOrInterfaceType>()
-      .map { it.nameWithScope }
+        type.nameWithScope
+          .takeIf { it !in typeNames }
+      }
       .toSet()
-
-    typeArgs + classNames
   }
 
   override val maybeExtraReferences: LazyDeferred<Set<String>> = lazyDeferred {
@@ -230,42 +235,88 @@ class RealJavaFile(
   }
 }
 
-fun ClassOrInterfaceType.typeArgumentsRecursive(): Sequence<Type> {
+/**
+ * Includes all types referenced by the receiver [ClassOrInterfaceType], optionally including
+ * itself.
+ *
+ * For instance, given the function:
+ *
+ * ```
+ * public javax.inject.Provider<List<String>> getStringListProvider() { /* ... */ }
+ * ```
+ *
+ * This function with will return a sequence of ['javax.inject.Provider', 'List', 'String'].
+ *
+ * @return A Sequence of all [Type]s referenced by the receiver class type.
+ */
+fun ClassOrInterfaceType.typeReferencesRecursive(): Sequence<ClassOrInterfaceType> {
 
-  val seed = typeArguments.getOrNull()?.asSequence()
-    ?: return emptySequence()
-
-  return generateSequence(seed) { types ->
-    types.flatMap { type ->
-      type.toClassOrInterfaceType()
-        .getOrNull()
-        ?.typeArguments
+  return generateSequence(sequenceOf(this)) { types ->
+    types.map { type ->
+      type.typeArguments
         ?.getOrNull()
         ?.asSequence()
+        ?.filterIsInstance<ClassOrInterfaceType>()
         .orEmpty()
     }
-      .filterNotNull()
-      .takeIf { it.firstOrNull() != null }
+      .flatten()
+      .takeIf { it.iterator().hasNext() }
   }
     .flatten()
 }
 
 fun MethodDeclaration.apiReferences(): List<String> {
 
-  if (!(isProtected || isPublic)) return emptyList()
+  if (!isProtected && !isPublic) return emptyList()
 
-  val returnTypes: Sequence<String> = type.getChildrenOfTypeRecursive<ClassOrInterfaceType>()
+  val typeParameterBounds = typeParameters.flatMap { it.typeBound }
+    .flatMap { it.typeReferencesRecursive() }
+    .map { it.nameWithScope }
+    .distinct()
+
+  val typeParameterNames = typeParameters.mapToSet { it.nameAsString }
+
+  val returnTypes: Sequence<String> = sequenceOf(type as? ClassOrInterfaceType)
+    .filterNotNull()
+    .plus(type.getChildrenOfTypeRecursive())
     .filterNot { it.parentNode.getOrNull() is ClassOrInterfaceType }
     .flatMap { classType ->
-      classType.typeArgumentsRecursive()
-        .filterIsInstance<ClassOrInterfaceType>()
-        .map { it.nameWithScope } + classType.nameWithScope
+      classType.typeReferencesRecursive()
+        .map { it.nameWithScope }
     }
+    .filterNot { it in typeParameterNames }
 
+  val arguments = parameters
+    .map { it.type }
+    .filterIsInstance<ClassOrInterfaceType>()
+    .flatMap { classType ->
+      classType.typeReferencesRecursive()
+        .map { it.nameWithScope }
+    }
+    .filterNot { it in typeParameterNames }
 
-  typeParameters
+  return typeParameterBounds + returnTypes + arguments
+}
 
-  return returnTypes.toList()
+internal fun ClassOrInterfaceType.fqNameOrNull(): FqName? {
+
+  return try {
+    resolve()?.qualifiedName
+      ?.let { name -> FqName(name) }
+  } catch (e: UnsolvedSymbolException) {
+    return null
+  } catch (e: UnsupportedOperationException) {
+    return null
+  }
+}
+
+internal fun Node.getTypeParameterNamesInScope(): Sequence<String> {
+  val parent = parentNode.getOrNull() ?: return emptySequence()
+  return generateSequence(parent) { p ->
+    p.parentNode.getOrNull()
+  }
+    .filterIsInstance<NodeWithTypeParameters<*>>()
+    .flatMap { node -> node.typeParameters.map { it.nameAsString } }
 }
 
 fun <T> T.canBeImported(): Boolean

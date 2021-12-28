@@ -22,6 +22,8 @@ import com.github.javaparser.ast.body.MethodDeclaration
 import com.github.javaparser.ast.body.TypeDeclaration
 import com.github.javaparser.ast.body.VariableDeclarator
 import com.github.javaparser.ast.expr.SimpleName
+import com.github.javaparser.ast.nodeTypes.NodeWithTypeArguments
+import com.github.javaparser.ast.nodeTypes.NodeWithTypeParameters
 import com.github.javaparser.resolution.Resolvable
 import com.github.javaparser.resolution.declarations.ResolvedDeclaration
 
@@ -43,6 +45,30 @@ inline fun <reified T : Node> Node.requireChildOfType(): T {
 
 inline fun <reified T : Node> Node.getChildrenOfType(): List<T> {
   return childNodes.filterIsInstance<T>()
+}
+
+internal inline fun <reified T : Node> Node.getParentOfType(): T? {
+  val parent = parentNode.getOrNull() ?: return null
+  return generateSequence(parent) { p ->
+    p.parentNode.getOrNull()
+  }
+    .filterIsInstance<T>()
+    .firstOrNull()
+}
+
+internal inline fun <reified T : Node> Node.getParentsOfTypeRecursive(): Sequence<T> {
+  val parent = parentNode.getOrNull() ?: return emptySequence()
+  return generateSequence(parent) { p ->
+    p.parentNode.getOrNull()
+  }
+    .filterIsInstance<T>()
+}
+
+internal fun Node.getParentsRecursive(): Sequence<Node> {
+  val parent = parentNode.getOrNull() ?: return emptySequence()
+  return generateSequence(parent) { p ->
+    p.parentNode.getOrNull()
+  }
 }
 
 fun Node.childrenRecursive(): Sequence<Node> {

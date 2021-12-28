@@ -20,6 +20,7 @@ import modulecheck.parsing.gradle.SourceSetName
 import modulecheck.parsing.source.JavaVersion
 import modulecheck.project.test.ProjectTest
 import org.intellij.lang.annotations.Language
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.io.File
 
@@ -120,13 +121,13 @@ internal class JavaFileTest :
   }
 
   @Test
-  fun `public static functions should count as declarations`() {
+  fun `public static methods should count as declarations`() {
 
     val file = file(
       """
     package com.test;
 
-    public class Utils {
+    public class ParsedClass {
 
       public static void foo() {}
     }
@@ -135,100 +136,200 @@ internal class JavaFileTest :
 
     file shouldBe javaFile(
       declarations = setOf(
-        "com.test.Utils", "com.test.Utils.foo"
+        "com.test.ParsedClass", "com.test.ParsedClass.foo"
       )
     )
   }
 
-  @Test
-  fun `public function return type should count as api reference`() {
+  @Nested
+  inner class `api references` {
 
-    val file = file(
-      """
+    @Test
+    fun `public method return type should count as api reference`() {
+
+      val file = file(
+        """
     package com.test;
 
     import com.lib1.Lib1Class;
 
-    public class Utils {
+    public class ParsedClass {
 
       public Lib1Class foo() { return Lib1Class(); }
     }
       """
-    )
+      )
 
-    file shouldBe javaFile(
-      imports = setOf("com.lib1.Lib1Class"),
-      declarations = setOf("com.test.Utils"),
-      apiReferences = setOf("com.lib1.Lib1Class")
-    )
-  }
+      file shouldBe javaFile(
+        imports = setOf("com.lib1.Lib1Class"),
+        declarations = setOf("com.test.ParsedClass"),
+        apiReferences = setOf("com.lib1.Lib1Class")
+      )
+    }
 
-  @Test
-  fun `public function with wildcard-imported return type should count as api reference`() {
+    @Test
+    fun `public method with wildcard-imported return type should count as api reference`() {
 
-    val file = file(
-      """
+      val file = file(
+        """
     package com.test;
 
     import com.lib1.*;
 
-    public class Utils {
+    public class ParsedClass {
 
       public Lib1Class foo() { return Lib1Class(); }
     }
       """
-    )
+      )
 
-    file shouldBe javaFile(
-      imports = setOf("com.lib1.Lib1Class"),
-      declarations = setOf("com.test.Utils"),
-      apiReferences = setOf("com.lib1.Lib1Class")
-    )
-  }
+      file shouldBe javaFile(
+        wildcardImports = setOf("com.lib1"),
+        declarations = setOf("com.test.ParsedClass"),
+        maybeExtraReferences = setOf("Lib1Class", "com.lib1.Lib1Class", "com.test.Lib1Class"),
+        apiReferences = setOf("Lib1Class", "com.lib1.Lib1Class", "com.test.Lib1Class")
+      )
+    }
 
-  @Test
-  fun `public function with fully qualified return type should count as api reference`() {
+    @Test
+    fun `public method with fully qualified return type should count as api reference`() {
 
-    val file = file(
-      """
+      val file = file(
+        """
     package com.test;
 
-    public class Utils {
+    public class ParsedClass {
 
       public com.lib1.Lib1Class foo() { return Lib1Class(); }
     }
       """
-    )
+      )
 
-    file shouldBe javaFile(
-      declarations = setOf("com.test.Utils"),
-      apiReferences = setOf("com.lib1.Lib1Class"),
-      maybeExtraReferences = setOf("com.lib1.Lib1Class", "com.test.com.lib1.Lib1Class")
-    )
-  }
+      file shouldBe javaFile(
+        declarations = setOf("com.test.ParsedClass"),
+        apiReferences = setOf("com.lib1.Lib1Class", "com.test.com.lib1.Lib1Class"),
+        maybeExtraReferences = setOf("com.lib1.Lib1Class", "com.test.com.lib1.Lib1Class")
+      )
+    }
 
-  @Test
-  fun `public function generic return type should count as api reference`() {
+    @Test
+    fun `public method parameterized return type should count as api reference`() {
 
-    val file = file(
-      """
+      val file = file(
+        """
     package com.test;
 
     import com.lib1.Lib1Class;
     import java.util.List;
 
-    public class Utils {
+    public class ParsedClass {
 
       public List<Lib1Class> foo() { return null; }
     }
       """
-    )
+      )
 
-    file shouldBe javaFile(
-      imports = setOf("com.lib1.Lib1Class", "java.util.List"),
-      declarations = setOf("com.test.Utils"),
-      apiReferences = setOf("com.lib1.Lib1Class", "java.util.List")
-    )
+      file shouldBe javaFile(
+        imports = setOf("com.lib1.Lib1Class", "java.util.List"),
+        declarations = setOf("com.test.ParsedClass"),
+        apiReferences = setOf("com.lib1.Lib1Class", "java.util.List")
+      )
+    }
+
+    @Test
+    fun `public method generic return type parameter should not count as api reference`() {
+
+      val file = file(
+        """
+    package com.test;
+
+    import java.util.List;
+
+    public class ParsedClass {
+
+      public <E> List<E> foo() { return null; }
+    }
+      """
+      )
+
+      file shouldBe javaFile(
+        imports = setOf("java.util.List"),
+        declarations = setOf("com.test.ParsedClass"),
+        apiReferences = setOf("java.util.List")
+      )
+    }
+
+    @Test
+    fun `import should not be an api reference if it isn't actually part of an api reference`() {
+
+      val file = file(
+        """
+    package com.test;
+
+    import com.lib1.Lib1Class;
+    import java.util.List;
+
+    public class ParsedClass {
+
+      public <E> List<E> foo() { return null; }
+    }
+      """
+      )
+
+      file shouldBe javaFile(
+        imports = setOf("com.lib1.Lib1Class", "java.util.List"),
+        declarations = setOf("com.test.ParsedClass"),
+        apiReferences = setOf("java.util.List")
+      )
+    }
+
+    @Test
+    fun `public method generic return type parameter bound should count as api reference`() {
+
+      val file = file(
+        """
+    package com.test;
+
+    import java.util.List;
+
+    public class ParsedClass {
+
+      public <E extends CharSequence> List<E> foo() { return null; }
+    }
+      """
+      )
+
+      file shouldBe javaFile(
+        imports = setOf("java.util.List"),
+        declarations = setOf("com.test.ParsedClass"),
+        apiReferences = setOf("java.util.List", "CharSequence", "com.test.CharSequence"),
+        maybeExtraReferences = setOf("CharSequence", "com.test.CharSequence")
+      )
+    }
+
+    @Test
+    fun `public method argument should count as api reference`() {
+
+      val file = file(
+        """
+    package com.test;
+
+    import java.util.List;
+
+    public class ParsedClass {
+
+      public <E> List<E> foo(String name) { return null; }
+    }
+      """
+      )
+
+      file shouldBe javaFile(
+        imports = setOf("java.util.List"),
+        declarations = setOf("com.test.ParsedClass"),
+        apiReferences = setOf("java.util.List", "String", "com.test.String"),
+        maybeExtraReferences = setOf("String", "com.test.String")
+      )
+    }
   }
 
   @Test
@@ -240,7 +341,7 @@ internal class JavaFileTest :
 
     import com.lib1.*;
 
-    public class Utils {
+    public class ParsedClass {
 
       public Lib1Class lib1Class;
     }
@@ -248,7 +349,7 @@ internal class JavaFileTest :
     )
 
     file shouldBe javaFile(
-      declarations = setOf("com.test.Utils"),
+      declarations = setOf("com.test.ParsedClass"),
       wildcardImports = setOf("com.lib1"),
       maybeExtraReferences = setOf(
         "Lib1Class",
@@ -269,7 +370,7 @@ internal class JavaFileTest :
     import com.lib1.*;
     import java.util.List;
 
-    public class Utils {
+    public class ParsedClass {
 
       public List<Lib1Class> lib1Classes;
     }
@@ -278,7 +379,7 @@ internal class JavaFileTest :
 
       file shouldBe javaFile(
         imports = setOf("java.util.List"),
-        declarations = setOf("com.test.Utils"),
+        declarations = setOf("com.test.ParsedClass"),
         wildcardImports = setOf("com.lib1"),
         maybeExtraReferences = setOf(
           "Lib1Class",
