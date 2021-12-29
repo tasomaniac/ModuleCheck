@@ -15,9 +15,6 @@
 
 package modulecheck.parsing.java
 
-import org.jetbrains.kotlin.name.FqName
-
-
 internal val javaStdLibNames = setOf(
 
   "java.lang.Appendable",

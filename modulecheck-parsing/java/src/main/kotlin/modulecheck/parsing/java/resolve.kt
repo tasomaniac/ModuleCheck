@@ -53,9 +53,6 @@ class JavaParserNodeResolver(
       .firstOrNull()
       ?.let { return it }
 
-
-
-
     return node.fqNameOrNull()
   }
 }

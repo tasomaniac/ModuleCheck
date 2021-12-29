@@ -22,8 +22,6 @@ import com.github.javaparser.ast.body.MethodDeclaration
 import com.github.javaparser.ast.body.TypeDeclaration
 import com.github.javaparser.ast.body.VariableDeclarator
 import com.github.javaparser.ast.expr.SimpleName
-import com.github.javaparser.ast.nodeTypes.NodeWithTypeArguments
-import com.github.javaparser.ast.nodeTypes.NodeWithTypeParameters
 import com.github.javaparser.resolution.Resolvable
 import com.github.javaparser.resolution.declarations.ResolvedDeclaration
 
