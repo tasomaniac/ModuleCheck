@@ -150,11 +150,20 @@ class RealKotlinFile(
       .flatten()
       .toSet()
 
-    allOther + allOther.map {
+    val kotlin = mutableSetOf<String>()
+    val unresolved = mutableSetOf<String>()
+
+    allOther.forEach { simpleName ->
+      simpleName.kotlinStdLibNameOrNull()
+        ?.let { kotlin.add(it.asString()) }
+        ?: unresolved.add(simpleName)
+    }
+
+    kotlin + unresolved + unresolved.map {
       "$packageFqName.$it"
     } + wildcardImports.flatMap { wildcardImport ->
 
-      allOther.map { referenceString ->
+      unresolved.map { referenceString ->
         wildcardImport.replace("*", referenceString)
       }
     }
@@ -201,7 +210,9 @@ class RealKotlinFile(
     )
   }
 
-  private fun KtAnnotationEntry.toRawAnvilAnnotatedType(typeFqName: FqName): RawAnvilAnnotatedType? {
+  private fun KtAnnotationEntry.toRawAnvilAnnotatedType(
+    typeFqName: FqName
+  ): RawAnvilAnnotatedType? {
     val valueArgument = valueArgumentList
       ?.getByNameOrIndex(0, "scope")
       ?: return null

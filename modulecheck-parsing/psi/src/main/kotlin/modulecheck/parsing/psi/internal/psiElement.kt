@@ -16,6 +16,7 @@
 package modulecheck.parsing.psi.internal
 
 import modulecheck.parsing.gradle.SourceSetName
+import modulecheck.parsing.psi.kotlinStdLibNames
 import modulecheck.parsing.source.KotlinFile
 import modulecheck.project.McProject
 import org.jetbrains.kotlin.com.intellij.psi.PsiElement
@@ -224,6 +225,27 @@ suspend fun PsiElement.fqNameOrNull(
   containingKtFile.importDirectives
     .firstOrNull { classReference == it.importPath?.importedName?.asString() }
     ?.importedFqName
+    ?.let { return it }
+
+  fun FqName.canLoadClass(): Boolean {
+    return try {
+      // this::class.java.classLoader.loadClass(this.asString())
+      // true
+      asString() in kotlinStdLibNames
+    } catch (e: ClassNotFoundException) {
+      false
+    }
+  }
+
+  // If this doesn't work, then maybe a class from the Kotlin package is used.
+  sequenceOf(
+    "kotlin.$classReference",
+    "kotlin.collections.$classReference",
+    "kotlin.jvm.$classReference",
+    "java.lang.$classReference"
+  )
+    .map { FqName(it) }
+    .firstOrNull { it.canLoadClass() }
     ?.let { return it }
 
   return null

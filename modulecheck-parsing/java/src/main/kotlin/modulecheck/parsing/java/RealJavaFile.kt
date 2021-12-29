@@ -15,11 +15,13 @@
 
 package modulecheck.parsing.java
 
+import com.github.javaparser.JavaParser
+import com.github.javaparser.ParserConfiguration
 import com.github.javaparser.ParserConfiguration.LanguageLevel
-import com.github.javaparser.StaticJavaParser
 import com.github.javaparser.ast.CompilationUnit
 import com.github.javaparser.ast.ImportDeclaration
 import com.github.javaparser.ast.Node
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration
 import com.github.javaparser.ast.body.EnumConstantDeclaration
 import com.github.javaparser.ast.body.FieldDeclaration
 import com.github.javaparser.ast.body.MethodDeclaration
@@ -64,6 +66,7 @@ import modulecheck.utils.lazyDeferred
 import modulecheck.utils.mapToSet
 import org.jetbrains.kotlin.name.FqName
 import java.io.File
+import kotlin.LazyThreadSafetyMode.NONE
 import kotlin.contracts.contract
 
 class RealJavaFile(
@@ -73,8 +76,7 @@ class RealJavaFile(
 
   override val name = file.name
 
-  private val compilationUnit: CompilationUnit by lazy {
-
+  private val parserConfiguration by lazy(NONE) {
     // Set up a minimal type solver that only looks at the classes used to run this sample.
     val combinedTypeSolver = CombinedTypeSolver()
       .apply {
@@ -86,13 +88,19 @@ class RealJavaFile(
 
     val symbolSolver = JavaSymbolSolver(combinedTypeSolver)
 
-    StaticJavaParser.getConfiguration()
+    ParserConfiguration()
       .apply {
         setSymbolResolver(symbolSolver)
         languageLevel = javaVersion.toLanguageLevel()
       }
+  }
 
-    StaticJavaParser.parse(file)
+  private val compilationUnit: CompilationUnit by lazy {
+
+    JavaParser(parserConfiguration)
+      .parse(file)
+      .result
+      .get()
   }
 
   private val parsed by lazy {
@@ -200,17 +208,22 @@ class RealJavaFile(
 
   override val apiReferences: Set<FqName> by lazy {
 
-    val simpleRefs = mutableSetOf<String>()
+    compilationUnit.printEverything()
 
-    compilationUnit.childrenRecursive()
-      .mapNotNull { node ->
+    val members = compilationUnit.childrenRecursive()
+      // Only look at references which are inside public classes.  This includes nested classes
+      // which may be (incorrectly) inside private or package-private classes.
+      .filter { node ->
+        node.getParentsOfTypeRecursive<ClassOrInterfaceDeclaration>()
+          .all { parentClass -> parentClass.isPublic || parentClass.isProtected }
+      }
 
-        when (node) {
-          is MethodDeclaration -> {
-
-            simpleRefs.addAll(node.apiReferences())
-          }
-          else -> null
+    val simpleRefs = members
+      .flatMap {
+        when (it) {
+          is MethodDeclaration -> it.apiReferences()
+          is FieldDeclaration -> it.apiReferences()
+          else -> emptyList()
         }
       }
       .toList()
@@ -263,6 +276,13 @@ fun ClassOrInterfaceType.typeReferencesRecursive(): Sequence<ClassOrInterfaceTyp
       .takeIf { it.iterator().hasNext() }
   }
     .flatten()
+}
+
+fun FieldDeclaration.apiReferences(): List<String> {
+  return (elementType as? ClassOrInterfaceType)?.typeReferencesRecursive()
+    .orEmpty()
+    .map { it.nameWithScope }
+    .toList()
 }
 
 fun MethodDeclaration.apiReferences(): List<String> {
