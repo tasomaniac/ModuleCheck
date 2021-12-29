@@ -227,26 +227,15 @@ suspend fun PsiElement.fqNameOrNull(
     ?.importedFqName
     ?.let { return it }
 
-  fun FqName.canLoadClass(): Boolean {
-    return try {
-      // this::class.java.classLoader.loadClass(this.asString())
-      // true
-      asString() in kotlinStdLibNames
-    } catch (e: ClassNotFoundException) {
-      false
-    }
-  }
-
   // If this doesn't work, then maybe a class from the Kotlin package is used.
   sequenceOf(
-    "kotlin.$classReference",
-    "kotlin.collections.$classReference",
     "kotlin.jvm.$classReference",
-    "java.lang.$classReference"
+    "java.lang.$classReference",
+    "kotlin.$classReference",
+    "kotlin.collections.$classReference"
   )
-    .map { FqName(it) }
-    .firstOrNull { it.canLoadClass() }
-    ?.let { return it }
+    .firstOrNull { it in kotlinStdLibNames }
+    ?.let { return FqName(it) }
 
   return null
 }

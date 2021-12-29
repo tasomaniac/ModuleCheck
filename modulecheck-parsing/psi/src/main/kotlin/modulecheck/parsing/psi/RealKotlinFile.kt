@@ -90,16 +90,16 @@ class RealKotlinFile(
 
     val apiRefsAsStrings = referenceVisitor.apiReferences.map { it.text }
 
+    val replacedWildcards = wildcardImports.flatMap { wildcardImport ->
+
+      apiRefsAsStrings.map { apiReference ->
+        wildcardImport.replace("*", apiReference)
+      }
+    }
+
     val (resolved, unresolved) = apiRefsAsStrings.map { reference ->
       imports.firstOrNull { it.endsWith(reference) } ?: reference
     }.partition { it in imports }
-
-    val replacedWildcards = wildcardImports.flatMap { wildcardImport ->
-
-      unresolved.map { apiReference ->
-        "$wildcardImport.$apiReference"
-      }
-    }
 
     val simple = unresolved + unresolved.map {
       ktFile.packageFqName.asString() + "." + it
@@ -150,20 +150,11 @@ class RealKotlinFile(
       .flatten()
       .toSet()
 
-    val kotlin = mutableSetOf<String>()
-    val unresolved = mutableSetOf<String>()
-
-    allOther.forEach { simpleName ->
-      simpleName.kotlinStdLibNameOrNull()
-        ?.let { kotlin.add(it.asString()) }
-        ?: unresolved.add(simpleName)
-    }
-
-    kotlin + unresolved + unresolved.map {
+    allOther + allOther.map {
       "$packageFqName.$it"
     } + wildcardImports.flatMap { wildcardImport ->
 
-      unresolved.map { referenceString ->
+      allOther.map { referenceString ->
         wildcardImport.replace("*", referenceString)
       }
     }

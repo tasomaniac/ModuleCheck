@@ -19,24 +19,19 @@ import com.github.javaparser.JavaParser
 import com.github.javaparser.ParserConfiguration
 import com.github.javaparser.ParserConfiguration.LanguageLevel
 import com.github.javaparser.ast.CompilationUnit
-import com.github.javaparser.ast.ImportDeclaration
 import com.github.javaparser.ast.Node
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration
-import com.github.javaparser.ast.body.EnumConstantDeclaration
 import com.github.javaparser.ast.body.FieldDeclaration
 import com.github.javaparser.ast.body.MethodDeclaration
-import com.github.javaparser.ast.body.TypeDeclaration
 import com.github.javaparser.ast.nodeTypes.NodeWithTypeParameters
 import com.github.javaparser.ast.nodeTypes.modifiers.NodeWithPrivateModifier
 import com.github.javaparser.ast.nodeTypes.modifiers.NodeWithStaticModifier
 import com.github.javaparser.ast.type.ClassOrInterfaceType
 import com.github.javaparser.ast.type.Type
 import com.github.javaparser.resolution.Resolvable
-import com.github.javaparser.resolution.UnsolvedSymbolException
 import com.github.javaparser.symbolsolver.JavaSymbolSolver
 import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver
-import modulecheck.parsing.source.DeclarationName
 import modulecheck.parsing.source.JavaFile
 import modulecheck.parsing.source.JavaVersion
 import modulecheck.parsing.source.JavaVersion.VERSION_11
@@ -71,7 +66,8 @@ import kotlin.contracts.contract
 
 class RealJavaFile(
   val file: File,
-  private val javaVersion: JavaVersion
+  private val javaVersion: JavaVersion,
+  private val nodeResolver: JavaParserNodeResolver
 ) : JavaFile {
 
   override val name = file.name
@@ -103,53 +99,12 @@ class RealJavaFile(
       .get()
   }
 
-  private val parsed by lazy {
-
-    val packageFqName = compilationUnit.packageDeclaration.get().nameAsString
-    val imports = compilationUnit.imports
-
-    val classOrInterfaceTypes = mutableSetOf<ClassOrInterfaceType>()
-    val typeDeclarations = mutableListOf<TypeDeclaration<*>>()
-    val memberDeclarations = mutableSetOf<DeclarationName>()
-    val enumDeclarations = mutableSetOf<DeclarationName>()
-
-    compilationUnit.childrenRecursive()
-      .forEach { node ->
-
-        when (node) {
-          is ClassOrInterfaceType -> classOrInterfaceTypes.add(node)
-          is TypeDeclaration<*> -> typeDeclarations.add(node)
-          is MethodDeclaration -> {
-
-            if (node.canBeImported()) {
-              memberDeclarations.add(DeclarationName(node.fqName(typeDeclarations)))
-            }
-          }
-          is FieldDeclaration -> {
-            if (node.canBeImported()) {
-              memberDeclarations.add(DeclarationName(node.fqName(typeDeclarations)))
-            }
-          }
-          is EnumConstantDeclaration -> {
-            enumDeclarations.add(DeclarationName(node.fqName(typeDeclarations)))
-          }
-        }
-      }
-
-    ParsedFile(
-      packageFqName = packageFqName,
-      imports = imports,
-      classOrInterfaceTypes = classOrInterfaceTypes.mapToSet { FqName(it.nameWithScope) },
-      typeDeclarations = typeDeclarations.distinct(),
-      fieldDeclarations = memberDeclarations,
-      enumDeclarations = enumDeclarations
-    )
-  }
+  private val parsed by ParsedFile.fromCompilationUnitLazy(compilationUnit)
 
   override val packageFqName by lazy { parsed.packageFqName }
 
   override val imports by lazy {
-    parsed.imports
+    compilationUnit.imports
       .filterNot { it.isAsterisk }
       .map { it.nameAsString }
       .toSet()
@@ -170,7 +125,7 @@ class RealJavaFile(
   }
 
   override val wildcardImports: Set<String> by lazy {
-    parsed.imports
+    compilationUnit.imports
       .filter { it.isAsterisk }
       .map { it.nameAsString }
       .toSet()
@@ -198,17 +153,17 @@ class RealJavaFile(
 
     val unresolved = typeReferenceNames
       .filter { name -> imports.none { import -> import.endsWith(name) } }
+      .filter { name -> name.javaLangFqNameOrNull() == null }
 
     val all = unresolved + unresolved.flatMap { reference ->
-      wildcardImports.map { "$it.$reference" } + "$packageFqName.$reference"
+      reference.javaLangFqNameOrNull()?.let { listOf(it.asString()) }
+        ?: (wildcardImports.map { "$it.$reference" } + "$packageFqName.$reference")
     }
 
     all.toSet()
   }
 
   override val apiReferences: Set<FqName> by lazy {
-
-    compilationUnit.printEverything()
 
     val members = compilationUnit.childrenRecursive()
       // Only look at references which are inside public classes.  This includes nested classes
@@ -228,22 +183,28 @@ class RealJavaFile(
       }
       .toList()
 
-    val (resolved, unresolved) = simpleRefs.map { reference ->
-      imports.firstOrNull { it.endsWith(reference) } ?: reference
-    }.partition { it in imports }
+    val resolved = mutableSetOf<String>()
+    val unresolved = mutableSetOf<String>()
 
-    val replacedWildcards = wildcardImports.flatMap { wildcardImport ->
+    simpleRefs.forEach { reference ->
 
-      unresolved.map { apiReference ->
-        "$wildcardImport.$apiReference"
+      val resolvedOrNull = imports.firstOrNull { it.endsWith(reference) }
+        ?: reference.javaLangFqNameOrNull()?.asString()
+
+      if (resolvedOrNull != null) {
+        resolved.add(resolvedOrNull)
+        return@forEach
       }
+
+      unresolved.add(reference)
     }
 
-    val simple = unresolved + unresolved.map {
-      "$packageFqName.$it"
+    val guesses = unresolved + unresolved.flatMap { reference ->
+      reference.javaLangFqNameOrNull()?.let { listOf(it.asString()) }
+        ?: (wildcardImports.map { "$it.$reference" } + "$packageFqName.$reference")
     }
 
-    (resolved + simple + replacedWildcards)
+    (resolved + guesses)
       .mapToSet { FqName(it) }
   }
 }
@@ -318,18 +279,6 @@ fun MethodDeclaration.apiReferences(): List<String> {
   return typeParameterBounds + returnTypes + arguments
 }
 
-internal fun ClassOrInterfaceType.fqNameOrNull(): FqName? {
-
-  return try {
-    resolve()?.qualifiedName
-      ?.let { name -> FqName(name) }
-  } catch (e: UnsolvedSymbolException) {
-    return null
-  } catch (e: UnsupportedOperationException) {
-    return null
-  }
-}
-
 internal fun Node.getTypeParameterNamesInScope(): Sequence<String> {
   val parent = parentNode.getOrNull() ?: return emptySequence()
   return generateSequence(parent) { p ->
@@ -377,12 +326,3 @@ internal fun JavaVersion.toLanguageLevel(): LanguageLevel {
     VERSION_HIGHER -> LanguageLevel.CURRENT
   }
 }
-
-internal data class ParsedFile(
-  val packageFqName: String,
-  val imports: List<ImportDeclaration>,
-  val classOrInterfaceTypes: Set<FqName>,
-  val typeDeclarations: List<TypeDeclaration<*>>,
-  val fieldDeclarations: Set<DeclarationName>,
-  val enumDeclarations: Set<DeclarationName>
-)
