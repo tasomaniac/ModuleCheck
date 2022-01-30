@@ -38,7 +38,7 @@ class RealFindingResultFactory @Inject constructor() : FindingResultFactory {
     deleteUnused: Boolean
   ): List<FindingResult> {
 
-    return findings.onEach { it.positionOrNull }
+    return findings.onEach { it.positionOrNull.await() }
       .map { finding ->
 
         val fixed = when {

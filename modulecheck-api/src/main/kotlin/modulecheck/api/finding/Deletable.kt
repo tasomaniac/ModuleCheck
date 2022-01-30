@@ -19,7 +19,7 @@ interface Deletable :
   Finding,
   DependencyFinding {
 
-  suspend fun delete(): Boolean  {
+  suspend fun delete(): Boolean {
 
     val declaration = declarationOrNull.await() ?: return false
 

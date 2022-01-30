@@ -21,7 +21,6 @@ import modulecheck.api.finding.Fixable
 import modulecheck.core.internal.positionOfStatement
 import modulecheck.parsing.gradle.AgpBlock
 import modulecheck.parsing.gradle.Declaration
-import modulecheck.parsing.gradle.DependencyDeclaration
 import modulecheck.project.McProject
 import modulecheck.utils.LazyDeferred
 import modulecheck.utils.indent

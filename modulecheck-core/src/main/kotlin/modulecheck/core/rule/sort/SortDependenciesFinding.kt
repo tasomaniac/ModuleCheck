@@ -43,7 +43,7 @@ class SortDependenciesFinding(
 
   override val dependencyIdentifier = ""
 
-  override val positionOrNull: LazyDeferred<Position?>  = lazyDeferred { null }
+  override val positionOrNull: LazyDeferred<Position?> = lazyDeferred { null }
 
   override val declarationOrNull: LazyDeferred<Declaration?> = lazyDeferred { null }
 

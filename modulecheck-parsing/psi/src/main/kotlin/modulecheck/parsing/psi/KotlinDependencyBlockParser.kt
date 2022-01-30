@@ -39,7 +39,8 @@ class KotlinDependencyBlockParser @Inject constructor() {
 
   @Suppress("ReturnCount")
   suspend fun parse(
-    invokesConfigurationNames: InvokesConfigurationNames): List<KotlinDependenciesBlock> {
+    invokesConfigurationNames: InvokesConfigurationNames
+  ): List<KotlinDependenciesBlock> {
 
     val file = invokesConfigurationNames.buildFile.asKtFile()
 
