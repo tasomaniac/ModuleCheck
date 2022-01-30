@@ -16,34 +16,36 @@
 package modulecheck.api.finding
 
 import com.squareup.anvil.annotations.ContributesBinding
-import modulecheck.api.finding.Finding.FindingResult
 import modulecheck.dagger.AppScope
+import modulecheck.utils.safeAs
 import javax.inject.Inject
 
-fun interface FindingResultFactory {
+fun interface FindingProcessor {
 
-  suspend fun create(
-    findings: List<Finding>,
+  suspend fun List<Finding>.toResults(
     autoCorrect: Boolean,
     deleteUnused: Boolean
-  ): List<FindingResult>
+  ): List<Finding.FindingResult>
 }
 
 @ContributesBinding(AppScope::class)
-class RealFindingResultFactory @Inject constructor() : FindingResultFactory {
+class RealFindingProcessor @Inject constructor() : FindingProcessor {
 
-  override suspend fun create(
-    findings: List<Finding>,
+  override suspend fun List<Finding>.toResults(
     autoCorrect: Boolean,
     deleteUnused: Boolean
-  ): List<FindingResult> {
+  ): List<Finding.FindingResult> {
 
-    return findings.onEach { it.positionOrNull }
+    return onEach { it.positionOrNull }
       .map { finding ->
+
+        finding.safeAs<Fixable>()?.positionOrNull?.await()
 
         val fixed = when {
           !autoCorrect -> false
-          deleteUnused && finding is Deletable -> finding.delete()
+          deleteUnused && finding is Deletable -> {
+            finding.delete()
+          }
           finding is Fixable -> finding.fix()
           else -> false
         }

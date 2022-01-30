@@ -20,8 +20,6 @@ plugins {
   id("org.jlleitschuh.gradle.ktlint")
 }
 
-val kotlinVersion = libs.versions.kotlin.get()
-
 dependencies {
 
   compileOnly(gradleApi())

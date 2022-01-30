@@ -39,7 +39,7 @@ data class OverShotDependencyFinding(
       "used in another source set which inherits from the first.  For example, a test-only " +
       "dependency which is declared via `implementation` instead of `testImplementation`."
 
-  override fun fix(): Boolean {
+  override suspend fun fix(): Boolean {
 
     val blocks = dependentProject.buildFileParser
       .dependenciesBlocks()

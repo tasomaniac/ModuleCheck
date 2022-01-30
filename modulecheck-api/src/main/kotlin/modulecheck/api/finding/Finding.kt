@@ -17,6 +17,7 @@ package modulecheck.api.finding
 
 import modulecheck.parsing.gradle.Declaration
 import modulecheck.project.McProject
+import modulecheck.utils.LazyDeferred
 import java.io.File
 
 interface Finding {
@@ -29,15 +30,15 @@ interface Finding {
   val message: String
   val buildFile: File
 
-  val positionOrNull: Position?
+  val positionOrNull: LazyDeferred<Position?>
 
-  fun toResult(fixed: Boolean): FindingResult {
+  suspend fun toResult(fixed: Boolean): FindingResult {
     return FindingResult(
       dependentPath = dependentPath,
       problemName = findingName,
       sourceOrNull = null,
       dependencyPath = "",
-      positionOrNull = positionOrNull,
+      positionOrNull = positionOrNull.await(),
       buildFile = buildFile,
       message = message,
       fixed = fixed
@@ -70,6 +71,6 @@ interface Finding {
 
 interface DependencyFinding {
 
-  val declarationOrNull: Declaration?
-  val statementTextOrNull: String?
+  val declarationOrNull: LazyDeferred<Declaration?>
+  val statementTextOrNull: LazyDeferred<String?>
 }

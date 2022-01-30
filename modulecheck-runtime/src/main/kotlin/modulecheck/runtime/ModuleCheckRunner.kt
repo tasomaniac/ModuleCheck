@@ -148,7 +148,7 @@ data class ModuleCheckRunner @AssistedInject constructor(
   /**
    * Tries to fix all findings one project at a time, then reports the results.
    */
-  private fun processFindings(findings: List<Finding>): List<FindingResult> {
+  private suspend fun processFindings(findings: List<Finding>): List<FindingResult> {
 
     // TODO - The order of applying fixes is stable, which may be important in troubleshooting, but
     //   it's probably not perfect. There is a chance that up-stream changes to a dependency can

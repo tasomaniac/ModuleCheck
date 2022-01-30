@@ -26,7 +26,7 @@ fun McProject.addDependency(
   cpd: ConfiguredProjectDependency,
   newDeclaration: DependencyDeclaration,
   markerDeclaration: DependencyDeclaration
-) = synchronized(buildFile) {
+)  {
 
   val oldStatement = markerDeclaration.statementWithSurroundingText
   val newStatement = newDeclaration.statementWithSurroundingText
@@ -44,7 +44,7 @@ fun McProject.removeDependencyWithComment(
   declaration: Declaration,
   fixLabel: String,
   configuredDependency: ConfiguredDependency? = null
-) = synchronized(buildFile) {
+)  {
 
   val text = buildFile.readText()
 
@@ -82,7 +82,7 @@ fun McProject.removeDependencyWithComment(
 fun McProject.removeDependencyWithDelete(
   declaration: Declaration,
   configuredDependency: ConfiguredDependency? = null
-) = synchronized(buildFile) {
+)  {
   val text = buildFile.readText()
 
   buildFile.writeText(

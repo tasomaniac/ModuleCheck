@@ -25,17 +25,17 @@ interface Problem :
 
   val dependencyIdentifier: String
 
-  fun shouldSkip(): Boolean = declarationOrNull?.suppressed
+  suspend fun shouldSkip(): Boolean = declarationOrNull.await()?.suppressed
     ?.contains(findingName)
     ?: false
 
-  override fun toResult(fixed: Boolean): FindingResult {
+  override suspend fun toResult(fixed: Boolean): FindingResult {
     return FindingResult(
       dependentPath = dependentPath,
       problemName = findingName,
       sourceOrNull = null,
       dependencyPath = dependencyIdentifier,
-      positionOrNull = positionOrNull,
+      positionOrNull = positionOrNull.await(),
       buildFile = buildFile,
       message = message,
       fixed = fixed
@@ -60,15 +60,15 @@ interface HasSource : Finding {
 
 interface Fixable : Finding, Problem {
 
-  fun fix(): Boolean = synchronized(buildFile) {
+  suspend fun fix(): Boolean {
 
-    val declaration = declarationOrNull ?: return false
+    val declaration = declarationOrNull.await() ?: return false
 
     require(this is RemovesDependency)
 
     dependentProject.removeDependencyWithComment(declaration, fixLabel(), oldDependency)
 
-    true
+    return true
   }
 
   fun fixLabel() = "  $FIX_LABEL [$findingName]"

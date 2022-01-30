@@ -318,15 +318,15 @@ class GradleProjectProvider @AssistedInject constructor(
       ?.filter { it.value.exists() }
       ?.map { manifestParser.parse(it.value)["package"] }
       ?.distinct()
-      ?.also {
-        require(it.size == 1) {
-          """ModuleCheck only supports a single base package.  The following packages are present for module `$path`:
-          |
-          |${it.joinToString("\n")}
-        """.trimMargin()
-        }
-      }
-      ?.single()
+      // ?.also {
+      //   require(it.size == 1) {
+      //     """ModuleCheck only supports a single base package.  The following packages are present for module `$path`:
+      //     |
+      //     |${it.joinToString("\n")}
+      //   """.trimMargin()
+      //   }
+      // }
+      ?.firstOrNull()
   }
 
   private val BaseExtension.variants: DomainObjectSet<out BaseVariant>?
