@@ -38,14 +38,6 @@ class InheritedDependencyRule : ModuleCheckRule<InheritedDependencyFinding> {
 
   override suspend fun check(project: McProject): List<InheritedDependencyFinding> {
 
-    fun log(msg: String) {
-      if (project.path == ":appointments:serum:business:impl") {
-        // println(msg)
-      }
-    }
-
-    log("starting here")
-
     // For each source set, the set of all module paths and whether they're test fixtures
     val dependencyPathCache = mutableMapOf<SourceSetName, Set<Pair<String, Boolean>>>()
 
@@ -89,8 +81,6 @@ class InheritedDependencyRule : ModuleCheckRule<InheritedDependencyFinding> {
           contributedSourceSet.inheritsFrom(usedSourceSet, project)
         }
 
-        log("already used? -- $alreadyUsedUpstream -- evaluating [ ${transitiveProjectDependency.contributed} ] from [ ${transitiveProjectDependency.source.path} ]")
-
         when {
           alreadyUsedUpstream -> alreadyUsed
           project.uses(transitiveProjectDependency.contributed) -> {
@@ -102,7 +92,7 @@ class InheritedDependencyRule : ModuleCheckRule<InheritedDependencyFinding> {
     }
 
     val used = project.classpathDependencies().all()
-      .also { log("got all classpath dependencies") }
+      .also { }
       .distinctBy { it.contributed.project.path to it.contributed.isTestFixture }
       .flatMap { transitive ->
 
@@ -117,8 +107,6 @@ class InheritedDependencyRule : ModuleCheckRule<InheritedDependencyFinding> {
           .sortedByInheritance(project)
           .allUsed()
       }
-
-    log("done with evaluating 'used'")
 
     return used.asSequence()
       .distinct()
