@@ -43,10 +43,8 @@ data class ClasspathDependencies(
   ): List<TransitiveProjectDependency> {
 
     fun sourceApiConfigs(
-      sourceSetName: SourceSetName,
       isTestFixtures: Boolean
     ): Set<ConfigurationName> = setOfNotNull(
-      sourceSetName.apiConfig(),
       ConfigurationName.api,
       SourceSetName.TEST_FIXTURES.apiConfig().takeIf { isTestFixtures }
     )
@@ -58,7 +56,7 @@ data class ClasspathDependencies(
     val directDependencyPaths = directDependencies.map { it.project.path }.toSet()
 
     val inherited = directDependencies.flatMap { sourceCpd ->
-      sourceApiConfigs(sourceSetName, sourceCpd.isTestFixture)
+      sourceApiConfigs(sourceCpd.isTestFixture)
         .flatMap { apiConfig ->
 
           sourceCpd.project

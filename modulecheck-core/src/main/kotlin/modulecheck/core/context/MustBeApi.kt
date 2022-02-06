@@ -82,7 +82,7 @@ data class MustBeApi(
         .map { it.project }
         .toSet()
 
-      val directMainDependencies by lazy(NONE) {
+      val directMainDependencies by lazy  {
         project.projectDependencies.main().map { it.project }
       }
 

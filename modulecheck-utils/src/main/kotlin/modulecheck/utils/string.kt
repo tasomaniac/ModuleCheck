@@ -19,6 +19,7 @@ import java.util.Locale
 
 fun String.stripNonPrintableCharacters(): String {
   return replace("""[\p{C}]""".toRegex(), "")
+    .replace("\ud83d", "")
 }
 
 fun String.decapitalize(
