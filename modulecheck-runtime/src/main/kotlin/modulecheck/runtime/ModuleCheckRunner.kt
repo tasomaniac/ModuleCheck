@@ -19,6 +19,8 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dispatch.core.DispatcherProvider
+import kotlinx.coroutines.flow.flatMap
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import modulecheck.api.DepthFinding
 import modulecheck.api.finding.Finding
@@ -35,7 +37,9 @@ import modulecheck.reporting.console.DepthLogFactory
 import modulecheck.reporting.console.DepthReportFactory
 import modulecheck.reporting.console.ReportFactory
 import modulecheck.reporting.graphviz.GraphvizFileWriter
+import modulecheck.utils.mapAsync
 import java.io.File
+import java.time.Clock.fixed
 import kotlin.system.measureTimeMillis
 
 /**
@@ -75,10 +79,20 @@ data class ModuleCheckRunner @AssistedInject constructor(
     val resultsWithTime = measured {
       val fixableFindings = findingFactory.evaluateFixable(projects).distinct()
 
+      println("fixable size --> ${fixableFindings.size}")
+
       val fixableResults = fixableFindings.filterIsInstance<Problem>()
-        .filterNot { it.shouldSkip() }
+        // .filterNot { it.shouldSkip() }
         .also { totalFindings += it.size }
-        .let { processFindings(it) }
+        .groupBy { it.dependentPath }
+        .toList()
+        .mapAsync { (_, problemsPerProject) ->
+          println(" ".padStart(90) + "start process findings")
+          processFindings(problemsPerProject)
+            .also { println(" ".padStart(90) + "finished process findings") }
+        }
+        .toList()
+        .flatten()
 
       projectProvider.clearCaches()
 

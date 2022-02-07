@@ -89,4 +89,30 @@ internal class AndroidResourceParserTest : BaseTest() {
 
     val parser = AndroidResourceParser().parseFile(testProjectDir)
   }
+
+  @Test
+  fun `what is happening 2`() {
+
+    val text = """
+    <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108.0"
+    android:viewportHeight="108.0">
+    <path
+        android:pathData="M0,0h108v108h-108z"
+        android:strokeColor="#00000000"
+        android:fillType="evenOdd"
+        android:strokeWidth="1"
+        android:fillColor="#FFFFFF"/>
+
+    </vector>
+    """.trimIndent()
+
+    testProjectDir.also { it.mkdirs() }
+      .child("values.xml")
+      .writeText(text)
+
+    val parser = AndroidResourceParser().parseFile(testProjectDir)
+  }
 }

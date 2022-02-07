@@ -51,10 +51,7 @@ class MultiRuleFindingFactory(
     projects: List<McProject>, predicate: (ModuleCheckRule<*>) -> Boolean
   ): List<Finding> {
 
-
     val threads = max(Runtime.getRuntime().availableProcessors(), 2)
-
-    // val gate = Semaphore(1)
     val gate = Semaphore(threads)
 
     return coroutineScope {
@@ -66,21 +63,20 @@ class MultiRuleFindingFactory(
 
       rules.filter { predicate(it) && it.shouldApply(settings.checks) }
         .flatMap { rule ->
-          sorted
-            .mapAsync { project ->
+          sorted.mapAsync { project ->
 
-              // gate.withPermit {
+            gate.withPermit {
 
-                rule.check(project)
+              rule.check(project)
 
-                  .also {
-                    println(
-                      "${project.path.plus("  ").padEnd(70, '-')} " +
-                        rule.id.padEnd(30)
-                    )
-                  }
-              // }
-            }.toList()
+                .also {
+                  println(
+                    "${project.path.plus("  ").padEnd(70, '-')} " +
+                      rule.id.padEnd(30)
+                  )
+                }
+            }
+          }.toList()
         }.flatten()
     }
   }

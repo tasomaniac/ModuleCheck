@@ -21,6 +21,7 @@ import modulecheck.project.ConfiguredDependency
 import modulecheck.project.ConfiguredProjectDependency
 import modulecheck.project.McProject
 import org.jetbrains.kotlin.util.prefixIfNot
+import org.jetbrains.kotlin.util.suffixIfNot
 
 fun McProject.addDependency(
   cpd: ConfiguredProjectDependency,
@@ -31,7 +32,8 @@ fun McProject.addDependency(
   val oldStatement = markerDeclaration.statementWithSurroundingText
   val newStatement = newDeclaration.statementWithSurroundingText
 
-  val combinedStatement = newStatement.plus(oldStatement.prefixIfNot("\n"))
+  val combinedStatement = newStatement.suffixIfNot("\n")
+    .plus(oldStatement )
 
   val buildFileText = buildFile.readText()
 

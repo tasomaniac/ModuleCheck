@@ -37,7 +37,12 @@ class RealDependenciesBlocksProvider(
 
     return when {
       buildFile.isKotlinScriptFile() -> kotlinParser.parse(invokesConfigurationNames)
-      buildFile.extension == "gradle" -> groovyParser.parse(buildFile.readText())
+      buildFile.extension == "gradle" -> {
+
+        println("file -- ${buildFile.path}")
+
+        groovyParser.parse(buildFile.readText())
+      }
       else -> throw IllegalArgumentException(
         "The file argument must be either a `*.gradle.kts` file or `*.gradle`.  " +
           "The supplied argument was `${buildFile.name}`"
