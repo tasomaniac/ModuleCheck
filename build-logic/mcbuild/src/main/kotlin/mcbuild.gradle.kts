@@ -18,6 +18,7 @@
 import modulecheck.builds.ArtifactIdListener
 import modulecheck.builds.DIListener
 import modulecheck.builds.ModuleCheckBuildExtension
+import modulecheck.builds.MyTask
 import modulecheck.builds.applyAnvil
 import modulecheck.builds.applyDagger
 import modulecheck.builds.configurePublishing
@@ -58,4 +59,10 @@ configurations.all {
       }
     }
   }
+}
+
+tasks.register("foo", MyTask::class.java) {
+
+  val t = this
+  println("registering foo with project --> ${t.project.path}")
 }
