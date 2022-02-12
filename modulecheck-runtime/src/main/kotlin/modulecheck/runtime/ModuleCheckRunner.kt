@@ -87,9 +87,9 @@ data class ModuleCheckRunner @AssistedInject constructor(
         .groupBy { it.dependentPath }
         .toList()
         .mapAsync { (_, problemsPerProject) ->
-          println(" ".padStart(90) + "start process findings")
+          // println(" ".padStart(90) + "start process findings")
           processFindings(problemsPerProject)
-            .also { println(" ".padStart(90) + "finished process findings") }
+            // .also { println(" ".padStart(90) + "finished process findings") }
         }
         .toList()
         .flatten()
