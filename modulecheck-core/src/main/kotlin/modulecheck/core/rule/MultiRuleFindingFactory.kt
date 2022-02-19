@@ -64,18 +64,7 @@ class MultiRuleFindingFactory(
       rules.filter { predicate(it) && it.shouldApply(settings.checks) }
         .flatMap { rule ->
           sorted.mapAsync { project ->
-
-            gate.withPermit {
-
-              rule.check(project)
-
-                .also {
-                  println(
-                    "${project.path.plus("  ").padEnd(70, '-')} " +
-                      rule.id.padEnd(30)
-                  )
-                }
-            }
+            gate.withPermit { rule.check(project) }
           }.toList()
         }.flatten()
     }

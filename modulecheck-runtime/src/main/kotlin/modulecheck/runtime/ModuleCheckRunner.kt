@@ -79,14 +79,12 @@ data class ModuleCheckRunner @AssistedInject constructor(
     val resultsWithTime = measured {
       val fixableFindings = findingFactory.evaluateFixable(projects).distinct()
 
-      println("fixable size --> ${fixableFindings.size}")
-
       val fixableResults = fixableFindings.filterIsInstance<Problem>()
         // .filterNot { it.shouldSkip() }
         .also { totalFindings += it.size }
         .groupBy { it.dependentPath }
         .toList()
-        .mapAsync { (_, problemsPerProject) ->
+        .map { (_, problemsPerProject) ->
           // println(" ".padStart(90) + "start process findings")
           processFindings(problemsPerProject)
             // .also { println(" ".padStart(90) + "finished process findings") }

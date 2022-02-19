@@ -39,8 +39,6 @@ class RealDependenciesBlocksProvider(
       buildFile.isKotlinScriptFile() -> kotlinParser.parse(invokesConfigurationNames)
       buildFile.extension == "gradle" -> {
 
-        println("file -- ${buildFile.path}")
-
         groovyParser.parse(buildFile.readText())
       }
       else -> throw IllegalArgumentException(

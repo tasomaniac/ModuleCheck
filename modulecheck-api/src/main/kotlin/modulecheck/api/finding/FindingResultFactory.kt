@@ -41,12 +41,6 @@ class RealFindingResultFactory @Inject constructor() : FindingResultFactory {
     return findings.onEach { it.positionOrNull.await() }
       .map { finding ->
 
-        println(
-          "on finding -- ${
-            finding.dependentPath.plus(" ").padEnd(70, '-')
-          } ${finding.findingName}"
-        )
-
         val fixed = when {
           !autoCorrect -> false
           deleteUnused && finding is Deletable -> finding.delete()
