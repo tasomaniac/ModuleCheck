@@ -18,6 +18,7 @@ package modulecheck.parsing.java
 import modulecheck.parsing.source.DeclarationName
 import modulecheck.parsing.source.JavaFile
 import modulecheck.parsing.source.Reference
+import modulecheck.parsing.source.asDeclarationName
 import modulecheck.parsing.source.asExplicitReference
 import modulecheck.testing.trimmedShouldBe
 import modulecheck.utils.LazySet.DataSource
@@ -80,7 +81,7 @@ class RealJavaFileTestUtils : JavaFileTestUtils {
     name = name,
     packageFqName = packageFqName,
     imports = imports.mapToSet { it.asExplicitReference() },
-    declarations = declarations.map { DeclarationName(it) }.toSet(),
+    declarations = declarations.map { it.asDeclarationName() }.toSet(),
     interpretedReferences = interpretedReferences,
     apiReferencesStrings = apiReferences
   )

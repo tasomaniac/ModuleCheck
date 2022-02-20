@@ -21,12 +21,53 @@ import modulecheck.parsing.source.Reference.UnqualifiedRReference
 import modulecheck.utils.LazySet
 import org.jetbrains.kotlin.name.FqName
 
+class TheClass {
+  companion object {
+    @JvmStatic
+    @JvmName("ee")
+    fun theFunction() = Unit
+
+    @JvmField
+    val SOMETHING_A = "33"
+
+    @JvmStatic
+    val SOMETHING_B = "33"
+
+    const val SOMETHING_C = "33"
+  }
+}
+
+interface DeclarationName {
+  val fqName: String
+}
+
+interface HasJavaAlternate {
+  val javaAlternateFqName: String
+}
+
 @JvmInline
-value class DeclarationName(val fqName: String)
+value class SimpleDeclarationName(override val fqName: String) : DeclarationName
 
-fun String.asDeclarationName(): DeclarationName = DeclarationName(this)
+data class DeclarationNameWithJavaAlternate(
+  override val fqName: String,
+  override val javaAlternateFqName: String
+) : DeclarationName, HasJavaAlternate
 
-fun FqName.asDeclarationName(): DeclarationName = DeclarationName(asString())
+fun String.asDeclarationName(
+  javaAlternateFqName: String? = null
+): DeclarationName = if (javaAlternateFqName != null) {
+  DeclarationNameWithJavaAlternate(this, javaAlternateFqName)
+} else {
+  SimpleDeclarationName(this)
+}
+
+fun FqName.asDeclarationName(
+  javaAlternateFqName: String? = null
+): DeclarationName = if (javaAlternateFqName != null) {
+  DeclarationNameWithJavaAlternate(asString(), javaAlternateFqName)
+} else {
+  SimpleDeclarationName(asString())
+}
 
 operator fun Set<DeclarationName>.contains(reference: Reference): Boolean {
   return when (reference) {

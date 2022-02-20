@@ -19,8 +19,11 @@ import modulecheck.parsing.psi.internal.PsiElementResolver
 import modulecheck.parsing.psi.internal.getByNameOrIndex
 import modulecheck.parsing.psi.internal.getChildrenOfTypeRecursive
 import modulecheck.parsing.psi.internal.identifier
+import modulecheck.parsing.psi.internal.isConstant
+import modulecheck.parsing.psi.internal.isJvmStatic
 import modulecheck.parsing.psi.internal.isPartOf
 import modulecheck.parsing.psi.internal.isPrivateOrInternal
+import modulecheck.parsing.psi.internal.jvmNameOrNull
 import modulecheck.parsing.source.AnvilScopeNameEntry
 import modulecheck.parsing.source.KotlinFile
 import modulecheck.parsing.source.KotlinFile.ScopeArgumentParseResult
@@ -31,20 +34,30 @@ import modulecheck.parsing.source.asExplicitReference
 import modulecheck.utils.LazyDeferred
 import modulecheck.utils.lazyDeferred
 import modulecheck.utils.mapToSet
+import modulecheck.utils.remove
+import modulecheck.utils.requireNotNull
 import modulecheck.utils.unsafeLazy
+import org.jetbrains.kotlin.fileClasses.javaFileFacadeFqName
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtAnnotated
 import org.jetbrains.kotlin.psi.KtAnnotationEntry
+import org.jetbrains.kotlin.psi.KtCallableDeclaration
+import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtFunction
 import org.jetbrains.kotlin.psi.KtImportDirective
 import org.jetbrains.kotlin.psi.KtNamedDeclaration
+import org.jetbrains.kotlin.psi.KtObjectDeclaration
 import org.jetbrains.kotlin.psi.KtPackageDirective
+import org.jetbrains.kotlin.psi.KtProperty
+import org.jetbrains.kotlin.psi.KtPropertyAccessor
 import org.jetbrains.kotlin.psi.classOrObjectRecursiveVisitor
+import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
+import org.jetbrains.kotlin.psi.psiUtil.isTopLevelKtOrJavaMember
 import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 class RealKotlinFile(
-  val ktFile: KtFile,
-  private val psiResolver: PsiElementResolver
+  val ktFile: KtFile, private val psiResolver: PsiElementResolver
 ) : KotlinFile {
 
   override val name = ktFile.name
@@ -53,42 +66,83 @@ class RealKotlinFile(
 
   override val importsLazy = lazy {
 
-    ktFile.importDirectives
-      .asSequence()
+    ktFile.importDirectives.asSequence()
       .filter { it.isValidImport }
       .filter { it.identifier() != null }
       .filter { it.identifier()?.contains("*")?.not() == true }
       .filter { !operatorSet.contains(it.identifier()) }
       .filter { !componentNRegex.matches(it.identifier()!!) }
       .mapNotNull { importDirective ->
-        importDirective
-          .importPath
-          ?.pathStr
-          ?.asExplicitReference()
+        importDirective.importPath?.pathStr?.asExplicitReference()
       }
       .toSet()
   }
 
   val constructorInjectedParams = lazyDeferred {
-    referenceVisitor.constructorInjected
-      .mapNotNull { psiResolver.fqNameOrNull(it) }
-      .toSet()
+    referenceVisitor.constructorInjected.mapNotNull { psiResolver.fqNameOrNull(it) }.toSet()
   }
+
+  val fileJavaFacadeName by lazy { ktFile.javaFileFacadeFqName.asString() }
+
+  private fun KtNamedDeclaration.jvmSimpleName() =
+    (this as? KtFunction)?.jvmNameOrNull() ?: (this as? KtPropertyAccessor)?.jvmNameOrNull()
+    ?: this.nameAsSafeName.asString()
 
   override val declarations by lazy {
 
     ktFile.getChildrenOfTypeRecursive<KtNamedDeclaration>()
       .asSequence()
       .filterNot { it.isPrivateOrInternal() }
-      .mapNotNull { it.fqName }
-      .map { it.asString().replace(".Companion", "").asDeclarationName() }
+      .mapNotNull {
+        val nameAsString = it.fqName?.asString() ?: return@mapNotNull null
+
+        if (it is KtProperty) {
+          it.isConstant()
+        }
+
+        when {
+          nameAsString.contains(".Companion") -> {
+
+            if (it.isStatic()) {
+              nameAsString.remove(".Companion").asDeclarationName()
+            } else {
+              nameAsString.remove(".Companion")
+                .asDeclarationName(javaAlternateFqName = nameAsString)
+            }
+          }
+
+          it.isTopLevelKtOrJavaMember() && it !is KtClassOrObject && !it.isStatic() -> {
+
+            nameAsString.asDeclarationName(
+              javaAlternateFqName = "$fileJavaFacadeName.${it.jvmSimpleName()}"
+            )
+          }
+
+          it.isPartOf<KtObjectDeclaration>() && !it.isStatic() -> {
+
+            val parentObjectOrNull = it.containingClassOrObject
+
+            if (parentObjectOrNull == null) {
+              nameAsString.asDeclarationName("$nameAsString.INSTANCE")
+            } else {
+              val parentFqName = parentObjectOrNull.fqName.requireNotNull().asString()
+              nameAsString.asDeclarationName(
+                javaAlternateFqName = "$parentFqName.INSTANCE.${it.jvmSimpleName()}"
+              )
+            }
+          }
+
+          else -> {
+            nameAsString.asDeclarationName()
+          }
+        }
+      }
       .toSet()
   }
 
   private val wildcardImports by lazy {
 
-    ktFile.importDirectives
-      .filter { it.identifier()?.contains("*") != false }
+    ktFile.importDirectives.filter { it.identifier()?.contains("*") != false }
       .mapNotNull { it.importPath?.pathStr }
       .toSet()
   }
@@ -118,13 +172,11 @@ class RealKotlinFile(
   }
 
   private val referenceVisitor by lazy {
-    ReferenceVisitor(this)
-      .also { ktFile.accept(it) }
+    ReferenceVisitor(this).also { ktFile.accept(it) }
   }
 
   private val typeReferences by lazy {
-    referenceVisitor.typeReferences
-      .filterNot { it.isPartOf<KtImportDirective>() }
+    referenceVisitor.typeReferences.filterNot { it.isPartOf<KtImportDirective>() }
       .filterNot { it.isPartOf<KtPackageDirective>() }
       // .mapNotNull { it.fqNameOrNull(project, sourceSetName)?.asString() }
       .map { it.text }
@@ -132,8 +184,7 @@ class RealKotlinFile(
   }
 
   private val callableReferences by lazy {
-    referenceVisitor.callableReferences
-      .filterNot { it.isPartOf<KtImportDirective>() }
+    referenceVisitor.callableReferences.filterNot { it.isPartOf<KtImportDirective>() }
       .filterNot { it.isPartOf<KtPackageDirective>() }
       // .mapNotNull { it.fqNameOrNull(project, sourceSetName)?.asString() }
       .map { it.text }
@@ -141,8 +192,7 @@ class RealKotlinFile(
   }
 
   private val qualifiedExpressions by lazy {
-    referenceVisitor.qualifiedExpressions
-      .filterNot { it.isPartOf<KtImportDirective>() }
+    referenceVisitor.qualifiedExpressions.filterNot { it.isPartOf<KtImportDirective>() }
       .filterNot { it.isPartOf<KtPackageDirective>() }
       // .mapNotNull { it.fqNameOrNull(project, sourceSetName)?.asString() }
       .map { it.text }
@@ -154,12 +204,8 @@ class RealKotlinFile(
     val imports by unsafeLazy { importsLazy.value.mapToSet { it.fqName } }
 
     val unresolved = listOf(
-      typeReferences,
-      callableReferences,
-      qualifiedExpressions
-    )
-      .flatten()
-      .filter { reference -> imports.none { it.endsWith(reference) } }
+      typeReferences, callableReferences, qualifiedExpressions
+    ).flatten().filter { reference -> imports.none { it.endsWith(reference) } }
 
     val trimmedWildcards = wildcardImports.map { it.removeSuffix(".*") }
 
@@ -175,8 +221,7 @@ class RealKotlinFile(
   }
 
   override fun getScopeArguments(
-    allAnnotations: Set<String>,
-    mergeAnnotations: Set<String>
+    allAnnotations: Set<String>, mergeAnnotations: Set<String>
   ): ScopeArgumentParseResult {
     val mergeArguments = mutableSetOf<RawAnvilAnnotatedType>()
     val contributeArguments = mutableSetOf<RawAnvilAnnotatedType>()
@@ -186,46 +231,41 @@ class RealKotlinFile(
       val typeFqName = classOrObject.fqName ?: return@vis
       val annotated = classOrObject.safeAs<KtAnnotated>() ?: return@vis
 
-      annotated
-        .annotationEntries
-        .filter { annotationEntry ->
-          val typeRef = annotationEntry.typeReference?.text ?: return@filter false
+      annotated.annotationEntries.filter { annotationEntry ->
+        val typeRef = annotationEntry.typeReference?.text ?: return@filter false
 
-          allAnnotations.any { it.endsWith(typeRef) }
+        allAnnotations.any { it.endsWith(typeRef) }
+      }.forEach { annotationEntry ->
+        val typeRef = annotationEntry.typeReference!!.text
+
+        val raw = annotationEntry.toRawAnvilAnnotatedType(typeFqName) ?: return@forEach
+
+        if (mergeAnnotations.any { it.endsWith(typeRef) }) {
+          mergeArguments.add(raw)
+        } else {
+          contributeArguments.add(raw)
         }
-        .forEach { annotationEntry ->
-          val typeRef = annotationEntry.typeReference!!.text
-
-          val raw = annotationEntry.toRawAnvilAnnotatedType(typeFqName) ?: return@forEach
-
-          if (mergeAnnotations.any { it.endsWith(typeRef) }) {
-            mergeArguments.add(raw)
-          } else {
-            contributeArguments.add(raw)
-          }
-        }
+      }
     }
 
     ktFile.accept(visitor)
 
     return ScopeArgumentParseResult(
-      mergeArguments = mergeArguments,
-      contributeArguments = contributeArguments
+      mergeArguments = mergeArguments, contributeArguments = contributeArguments
     )
+  }
+
+  private fun KtNamedDeclaration.isStatic(): Boolean {
+    return (this as? KtCallableDeclaration)?.isJvmStatic() == true
   }
 
   private fun KtAnnotationEntry.toRawAnvilAnnotatedType(
     typeFqName: FqName
   ): RawAnvilAnnotatedType? {
-    val valueArgument = valueArgumentList
-      ?.getByNameOrIndex(0, "scope")
-      ?: return null
+    val valueArgument = valueArgumentList?.getByNameOrIndex(0, "scope") ?: return null
 
-    val entryText = valueArgument
-      .text
-      .replace(".+[=]+".toRegex(), "") // remove named arguments
-      .replace("::class", "")
-      .trim()
+    val entryText = valueArgument.text.replace(".+[=]+".toRegex(), "") // remove named arguments
+      .replace("::class", "").trim()
 
     return RawAnvilAnnotatedType(
       declarationName = typeFqName.asDeclarationName(),

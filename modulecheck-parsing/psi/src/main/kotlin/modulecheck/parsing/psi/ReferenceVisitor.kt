@@ -92,7 +92,7 @@ class ReferenceVisitor(
 
       apiReferences += valueTypeRefs
 
-      if (constructor.hasAnnotation(kotlinFile, FqNames.inject)) {
+      if (constructor.hasAnnotation(FqNames.inject)) {
         constructorInjected += valueTypeRefs
       }
 
@@ -108,7 +108,7 @@ class ReferenceVisitor(
 
       apiReferences += valueTypeRefs
 
-      if (constructor.hasAnnotation(kotlinFile, FqNames.inject)) {
+      if (constructor.hasAnnotation(FqNames.inject)) {
         constructorInjected += valueTypeRefs
       }
 

@@ -17,9 +17,8 @@ package modulecheck.parsing.psi.internal
 
 import modulecheck.parsing.gradle.SourceSetName
 import modulecheck.parsing.psi.kotlinStdLibNames
-import modulecheck.parsing.source.KotlinFile
-import modulecheck.parsing.source.contains
 import modulecheck.project.McProject
+import modulecheck.utils.unsafeLazy
 import org.jetbrains.kotlin.com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
@@ -56,15 +55,29 @@ inline fun <reified T : PsiElement> PsiElement.getChildrenOfTypeRecursive(): Lis
     .toList()
 }
 
-fun KtAnnotated.hasAnnotation(file: KotlinFile, annotationFqName: FqName): Boolean {
+fun KtAnnotated.hasAnnotation(annotationFqName: FqName): Boolean {
 
   if (annotationEntries.any { it.typeReference?.typeElement?.text == annotationFqName.asString() }) {
     return true
   }
 
-  val samePackage = annotationFqName.parent().asString() == file.packageFqName
+  val file = containingKtFile
 
-  if (!samePackage && !file.importsLazy.value.contains(annotationFqName.asString())) {
+  val samePackage = annotationFqName.parent() == file.packageFqName
+
+  // The annotation doesn't need to be imported if it's defined in the same package,
+  // or if it's from the Kotlin stdlib.
+  val needsImport = !samePackage && !setOf("kotlin", "kotlin.jvm")
+    .contains(annotationFqName.parent().asString())
+
+  println("needs import --> $needsImport")
+
+  val isImported by unsafeLazy {
+    file.importDirectives.map { it.importPath?.pathStr }
+      .contains(annotationFqName.asString())
+  }
+
+  if (needsImport && !isImported) {
     return false
   }
 

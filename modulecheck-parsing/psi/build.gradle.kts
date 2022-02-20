@@ -24,6 +24,8 @@ mcbuild {
 dependencies {
 
   api(libs.kotlin.compiler)
+  api(libs.kotlin.gradle.plug)
+  api(libs.kotlin.gradle.plugin.api)
 
   api(project(path = ":modulecheck-parsing:gradle"))
   api(project(path = ":modulecheck-parsing:source"))

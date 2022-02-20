@@ -23,6 +23,7 @@ import com.github.javaparser.ast.body.MethodDeclaration
 import com.github.javaparser.ast.body.TypeDeclaration
 import com.github.javaparser.ast.type.ClassOrInterfaceType
 import modulecheck.parsing.source.DeclarationName
+import modulecheck.parsing.source.SimpleDeclarationName
 import modulecheck.utils.mapToSet
 import org.jetbrains.kotlin.name.FqName
 
@@ -54,16 +55,16 @@ internal data class ParsedFile(
               is MethodDeclaration -> {
 
                 if (node.canBeImported()) {
-                  memberDeclarations.add(DeclarationName(node.fqName(typeDeclarations)))
+                  memberDeclarations.add(SimpleDeclarationName(node.fqName(typeDeclarations)))
                 }
               }
               is FieldDeclaration -> {
                 if (node.canBeImported()) {
-                  memberDeclarations.add(DeclarationName(node.fqName(typeDeclarations)))
+                  memberDeclarations.add(SimpleDeclarationName(node.fqName(typeDeclarations)))
                 }
               }
               is EnumConstantDeclaration -> {
-                enumDeclarations.add(DeclarationName(node.fqName(typeDeclarations)))
+                enumDeclarations.add(SimpleDeclarationName(node.fqName(typeDeclarations)))
               }
             }
           }

@@ -597,6 +597,75 @@ class UnusedDependenciesTest : RunnerTest() {
   }
 
   @Test
+  fun `static import from java file should not be unused`() {
+
+    settings.deleteUnused = false
+
+    val runner = runner(
+      autoCorrect = true,
+      findingFactory = findingFactory
+    )
+
+    val lib1 = project(":lib1") {
+      addSource(
+        "com/modulecheck/lib1/Lib1Class.kt",
+        """
+        package com.modulecheck.lib1
+
+        object Lib1Class {
+          @JvmStatic fun foo() = Unit
+        }
+        """.trimIndent()
+      )
+    }
+
+    val lib2 = project(":lib2") {
+      addDependency(ConfigurationName.implementation, lib1)
+
+      buildFile.writeText(
+        """
+        plugins {
+          kotlin("jvm")
+        }
+
+        dependencies {
+          implementation(project(path = ":lib1"))
+        }
+        """.trimIndent()
+      )
+
+      addSource(
+        "com/modulecheck/lib2/Lib2Class.java",
+        //language=java
+        """
+        package com.modulecheck.lib2;
+
+        import static com.modulecheck.lib1.Lib1Class.foo;
+
+        public class Lib2Class {
+        }
+        """.trimIndent()
+      )
+    }
+
+    runner.run(allProjects()).isSuccess shouldBe true
+
+    lib2.buildFile.readText() shouldBe """
+        plugins {
+          kotlin("jvm")
+        }
+
+        dependencies {
+          implementation(project(path = ":lib1"))
+        }
+        """
+
+    logger.collectReport()
+      .joinToString()
+      .clean() shouldBe """ModuleCheck found 0 issues"""
+  }
+
+  @Test
   fun `testImplementation used in test should not be unused`() {
 
     settings.deleteUnused = false

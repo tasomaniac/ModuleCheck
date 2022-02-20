@@ -125,6 +125,26 @@ internal class JavaFileTest :
     }
 
     @Test
+    fun `static imports should count as imports`() {
+
+      val file = file(
+        """
+      package com.test;
+
+      import static com.lib1.Utils.foo;
+
+      public class Constants {
+      }
+      """
+      )
+
+      file shouldBe javaFile(
+        declarations = setOf("com.test.Constants"),
+        imports = setOf("com.lib1.Utils.foo")
+      )
+    }
+
+    @Test
     fun `public static methods should count as declarations`() {
 
       val file = file(

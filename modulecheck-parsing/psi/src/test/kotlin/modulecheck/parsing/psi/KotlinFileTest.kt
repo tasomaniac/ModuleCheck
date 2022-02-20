@@ -21,6 +21,8 @@ import kotlinx.coroutines.runBlocking
 import modulecheck.parsing.gradle.SourceSetName
 import modulecheck.parsing.psi.internal.PsiElementResolver
 import modulecheck.parsing.psi.internal.psiFileFactory
+import modulecheck.parsing.source.DeclarationNameWithJavaAlternate
+import modulecheck.parsing.source.SimpleDeclarationName
 import modulecheck.project.McProject
 import modulecheck.project.test.ProjectTest
 import org.intellij.lang.annotations.Language
@@ -296,6 +298,258 @@ internal class KotlinFileTest : ProjectTest() {
 
       file.apiReferences.await() shouldBe listOf("com.lib.Config")
     }
+
+  @Test
+  fun `file with JvmName annotation should count as declaration`() = test {
+
+    val file = createFile(
+      """
+      @file:JvmName("TheFile")
+      package com.test
+
+      fun theFunction() = Unit
+
+      val theProperty = ""
+      """
+    )
+
+    file.declarations shouldBe listOf(
+      DeclarationNameWithJavaAlternate(
+        fqName = "com.test.theFunction",
+        javaAlternateFqName = "com.test.TheFile.theFunction"
+      ),
+      DeclarationNameWithJavaAlternate(
+        fqName = "com.test.theProperty",
+        javaAlternateFqName = "com.test.TheFile.theProperty"
+      ),
+    )
+  }
+
+  @Test
+  fun `file with JvmName annotation should not have alternate names for type declarations`() =
+    test {
+
+      val file = createFile(
+        """
+      @file:JvmName("TheFile")
+      package com.test
+
+      class TheClass
+      """
+      )
+
+      file.declarations shouldBe listOf(
+        SimpleDeclarationName(fqName = "com.test.TheClass")
+      )
+    }
+
+  @Test
+  fun `file without JvmName should have alternate names for top-level functions`() = test {
+
+    val file = createFile(
+      """
+      package com.test
+
+      fun theFunction() = Unit
+
+      val theProperty = ""
+      """
+    )
+
+    file.declarations shouldBe listOf(
+      DeclarationNameWithJavaAlternate(
+        fqName = "com.test.theFunction",
+        javaAlternateFqName = "com.test.SourceKt.theFunction"
+      ),
+      DeclarationNameWithJavaAlternate(
+        fqName = "com.test.theProperty",
+        javaAlternateFqName = "com.test.SourceKt.theProperty"
+      )
+    )
+  }
+
+  @Test
+  fun `file without JvmName should not have alternate names for type declarations`() = test {
+
+    val file = createFile(
+      """
+      package com.test
+
+      class TheClass
+      """
+    )
+
+    file.declarations shouldBe listOf(
+      SimpleDeclarationName(fqName = "com.test.TheClass")
+    )
+  }
+
+  @Test
+  fun `object should have alternate name with INSTANCE`() = test {
+
+    val file = createFile(
+      """
+      package com.test
+
+      object Utils
+      """
+    )
+
+    file.declarations shouldBe listOf(
+      DeclarationNameWithJavaAlternate(
+        fqName = "com.test.Utils",
+        javaAlternateFqName = "com.test.Utils.INSTANCE"
+      )
+    )
+  }
+
+  @Test
+  fun `object function without JvmStatic should have alternate name with INSTANCE`() = test {
+
+    val file = createFile(
+      """
+      package com.test
+
+      object Utils {
+        fun theFunction() = Unit
+      }
+      """
+    )
+
+    file.declarations shouldBe listOf(
+      DeclarationNameWithJavaAlternate(
+        fqName = "com.test.Utils",
+        javaAlternateFqName = "com.test.Utils.INSTANCE"
+      ),
+      DeclarationNameWithJavaAlternate(
+        fqName = "com.test.Utils.theFunction",
+        javaAlternateFqName = "com.test.Utils.INSTANCE.theFunction"
+      )
+    )
+  }
+
+  @Test
+  fun `object function with JvmStatic should not have alternate name`() = test {
+
+    val file = createFile(
+      """
+      package com.test
+
+      object Utils {
+        @JvmStatic
+        fun theFunction() = Unit
+      }
+      """
+    )
+
+    file.declarations shouldBe listOf(
+      DeclarationNameWithJavaAlternate(
+        fqName = "com.test.Utils",
+        javaAlternateFqName = "com.test.Utils.INSTANCE"
+      ),
+      SimpleDeclarationName("com.test.Utils.theFunction")
+    )
+  }
+
+  @Test
+  fun `companion object without JvmStatic should have alternate name with Companion`() = test {
+
+    val file = createFile(
+      """
+      package com.test
+
+      class SomeClass {
+        companion object {
+          fun theFunction() = Unit
+        }
+      }
+      """
+    )
+
+    file.declarations shouldBe listOf(
+      SimpleDeclarationName("com.test.SomeClass"),
+      DeclarationNameWithJavaAlternate(
+        fqName = "com.test.SomeClass",
+        javaAlternateFqName = "com.test.SomeClass.Companion"
+      ),
+      DeclarationNameWithJavaAlternate(
+        fqName = "com.test.SomeClass.theFunction",
+        javaAlternateFqName = "com.test.SomeClass.Companion.theFunction"
+      )
+    )
+  }
+
+  @Test
+  fun `companion object with JvmStatic should have alternate name`() = test {
+
+    val file = createFile(
+      """
+      package com.test
+
+      class SomeClass {
+        companion object {
+          @JvmStatic
+          fun theFunction() = Unit
+        }
+      }
+      """
+    )
+
+    file.declarations shouldBe listOf(
+      SimpleDeclarationName("com.test.SomeClass"),
+      DeclarationNameWithJavaAlternate(
+        fqName = "com.test.SomeClass",
+        javaAlternateFqName = "com.test.SomeClass.Companion"
+      ),
+      SimpleDeclarationName("com.test.SomeClass.theFunction")
+    )
+  }
+
+  @Test
+  fun `top-level function with JvmName annotation should have alternate name`() = test {
+
+    val file = createFile(
+      """
+      package com.test
+
+      @JvmName("alternate")
+      fun theFunction() = Unit
+      """
+    )
+
+    file.declarations shouldBe listOf(
+      DeclarationNameWithJavaAlternate(
+        fqName = "com.test.theFunction",
+        javaAlternateFqName = "com.test.SourceKt.alternate"
+      )
+    )
+  }
+
+  @Test
+  fun `member function with JvmName annotation should have alternate name`() = test {
+
+    val file = createFile(
+      """
+      package com.test
+
+      object Utils {
+        @JvmName("alternate")
+        fun theFunction() = Unit
+      }
+      """
+    )
+
+    file.declarations shouldBe listOf(
+      DeclarationNameWithJavaAlternate(
+        fqName = "com.test.Utils",
+        javaAlternateFqName = "com.test.Utils.INSTANCE"
+      ),
+      DeclarationNameWithJavaAlternate(
+        fqName = "com.test.Utils.theFunction",
+        javaAlternateFqName = "com.test.Utils.INSTANCE.alternate"
+      )
+    )
+  }
 
   fun createFile(
     @Language("kotlin")

@@ -87,7 +87,7 @@ internal class AndroidResourceParserTest : BaseTest() {
       .child("values.xml")
       .writeText(text)
 
-    val parser = AndroidResourceParser().parseFile(testProjectDir)
+    AndroidResourceParser().parseFile(testProjectDir)
   }
 
   @Test
@@ -113,6 +113,6 @@ internal class AndroidResourceParserTest : BaseTest() {
       .child("values.xml")
       .writeText(text)
 
-    val parser = AndroidResourceParser().parseFile(testProjectDir)
+    AndroidResourceParser().parseFile(testProjectDir)
   }
 }

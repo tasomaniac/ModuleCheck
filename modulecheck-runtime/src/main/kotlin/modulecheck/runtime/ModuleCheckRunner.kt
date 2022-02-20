@@ -80,7 +80,7 @@ data class ModuleCheckRunner @AssistedInject constructor(
       val fixableFindings = findingFactory.evaluateFixable(projects).distinct()
 
       val fixableResults = fixableFindings.filterIsInstance<Problem>()
-        // .filterNot { it.shouldSkip() }
+        .filterNot { it.shouldSkip() }
         .also { totalFindings += it.size }
         .groupBy { it.dependentPath }
         .toList()

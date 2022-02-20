@@ -13,12 +13,14 @@
  * limitations under the License.
  */
 
-package modulecheck.parsing.psi
+package modulecheck.parsing.source.a;
 
-import org.jetbrains.kotlin.name.FqName
+import modulecheck.parsing.source.TheClass;
 
-object FqNames {
-  val inject = FqName("javax.inject.Inject")
-  val jvmField = FqName("kotlin.jvm.JvmField")
-  val jvmStatic = FqName("kotlin.jvm.JvmStatic")
+public class Scratch {
+  void foo() {
+    String a = TheClass.SOMETHING_A;
+    String b = TheClass.getSOMETHING_B();
+    String c = TheClass.SOMETHING_C;
+  }
 }
