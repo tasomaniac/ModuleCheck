@@ -84,14 +84,14 @@ data class ApiDependencySources(
   }
 }
 
-suspend fun ProjectContext.apiDependencySources(): ApiDependencySources = get(ApiDependencySources)
+suspend fun ProjectContext.dependencySources(): ApiDependencySources = get(ApiDependencySources)
 
 suspend fun McProject.requireSourceOf(
   dependencyProject: McProject,
   sourceSetName: SourceSetName,
   isTestFixture: Boolean
 ): ConfiguredProjectDependency {
-  return apiDependencySources().sourceOfOrNull(
+  return dependencySources().sourceOfOrNull(
     dependencyProjectPath = dependencyProject.path,
     sourceSetName = sourceSetName,
     isTestFixture = isTestFixture

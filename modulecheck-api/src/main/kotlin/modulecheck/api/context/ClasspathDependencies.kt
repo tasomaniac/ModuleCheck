@@ -21,6 +21,7 @@ import modulecheck.project.McProject
 import modulecheck.project.ProjectContext
 import modulecheck.project.TransitiveProjectDependency
 import modulecheck.utils.SafeCache
+import modulecheck.utils.mapToSet
 
 data class ClasspathDependencies(
   private val delegate: SafeCache<SourceSetName, List<TransitiveProjectDependency>>,
@@ -55,7 +56,7 @@ data class ClasspathDependencies(
       .filterNot { it.project == project }
       .toSet()
 
-    val directDependencyPaths = directDependencies.map { it.project.path }.toSet()
+    val directDependencyPaths = directDependencies.mapToSet { it.project.path }
 
     val inherited = directDependencies.flatMap { sourceCpd ->
       sourceApiConfigs(sourceSetName, sourceCpd.isTestFixture)

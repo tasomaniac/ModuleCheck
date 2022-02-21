@@ -1066,6 +1066,77 @@ class UnusedDependenciesTest : RunnerTest() {
   }
 
   @Test
+  fun `unused from testFixtures but used main source with auto-correct should be fixed`() {
+
+    settings.deleteUnused = false
+
+    val runner = runner(
+      autoCorrect = true,
+      findingFactory = findingFactory
+    )
+
+    val lib1 = project(":lib1") {
+      addSource(
+        "com/modulecheck/lib1/Lib1Class.kt",
+        """
+        package com.modulecheck.lib1
+
+        class Lib1Class
+        """.trimIndent(),
+        SourceSetName.MAIN
+      )
+      addSource(
+        "com/modulecheck/lib1/TestLib1Class.kt",
+        """
+        package com.modulecheck.lib1
+
+        class TestLib1Class
+        """.trimIndent(),
+        SourceSetName.TEST_FIXTURES
+      )
+    }
+
+    val lib2 = project(":lib2") {
+      addDependency(ConfigurationName.testImplementation, lib1, asTestFixture = true)
+
+      buildFile.writeText(
+        """
+        plugins {
+          kotlin("jvm")
+        }
+
+        dependencies {
+          testImplementation(testFixtures(project(path = ":lib1")))
+        }
+        """.trimIndent()
+      )
+    }
+
+    runner.run(allProjects()).isSuccess shouldBe true
+
+    lib2.buildFile.readText() shouldBe """
+        plugins {
+          kotlin("jvm")
+        }
+
+        dependencies {
+          // testImplementation(testFixtures(project(path = ":lib1")))  // ModuleCheck finding [unusedDependency]
+          testImplementation(project(path = ":lib1"))
+        }
+        """
+
+    logger.collectReport()
+      .joinToString()
+      .clean() shouldBe """
+            :lib2
+                   dependency    name                source    build file
+                ✔  :lib1         unusedDependency              /lib2/build.gradle.kts: (6, 3):
+
+        ModuleCheck found 1 issue
+        """
+  }
+
+  @Test
   fun `static member declaration used via wildcard import should not be unused`() {
 
     settings.deleteUnused = false

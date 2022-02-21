@@ -18,20 +18,20 @@ package modulecheck.core.context
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.flattenMerge
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.flow.toSet
 import modulecheck.api.context.anvilGraph
 import modulecheck.api.context.anvilScopeContributionsForSourceSetName
-import modulecheck.api.context.apiDependencySources
 import modulecheck.api.context.classpathDependencies
 import modulecheck.api.context.declarations
+import modulecheck.api.context.dependencySources
 import modulecheck.api.context.jvmFilesForSourceSetName
 import modulecheck.parsing.gradle.ConfigurationName
 import modulecheck.parsing.gradle.SourceSetName
 import modulecheck.parsing.source.DeclarationName
+import modulecheck.parsing.source.JavaFile
 import modulecheck.parsing.source.KotlinFile
 import modulecheck.parsing.source.contains
 import modulecheck.project.ConfiguredProjectDependency
@@ -40,9 +40,12 @@ import modulecheck.project.ProjectContext
 import modulecheck.utils.LazyDeferred
 import modulecheck.utils.LazySet
 import modulecheck.utils.any
+import modulecheck.utils.emptyDataSource
 import modulecheck.utils.filterAsync
 import modulecheck.utils.flatMapListConcat
+import modulecheck.utils.flatMapToSet
 import modulecheck.utils.lazyDeferred
+import modulecheck.utils.lazySet
 import modulecheck.utils.mapAsync
 
 data class MustBeApi(
@@ -55,123 +58,151 @@ data class MustBeApi(
 
   companion object Key : ProjectContext.Key<MustBeApi> {
     override suspend operator fun invoke(project: McProject): MustBeApi {
-      // this is anything in the main classpath, including inherited dependencies
-      val mainDependencies = project.classpathDependencies()
-        .get(SourceSetName.MAIN)
-        .map { it.contributed }
 
-      val mergedScopeNames = project.anvilGraph()
-        .mergedScopeNames()
+      val api = project.sourceSets
+        .keys
+        .flatMapToSet { sourceSetName ->
 
-      // projects with a @Contributes(...) annotation somewhere
-      val scopeContributingProjects = mainDependencies
-        .filter { (_, projectDependency) ->
+          // this is anything in the main classpath, including inherited dependencies
+          val mainDependencies = project.classpathDependencies()
+            .get(sourceSetName)
+            .map { it.contributed }
 
-          val contributions =
-            projectDependency.anvilScopeContributionsForSourceSetName(SourceSetName.MAIN)
+          val mergedScopeNames = project.anvilGraph()
+            .mergedScopeNames()
 
-          mergedScopeNames.any { contributions.containsKey(it) }
+          // projects with a @Contributes(...) annotation somewhere
+          val scopeContributingProjects = mainDependencies
+            .filter { (_, projectDependency) ->
+
+              val contributions =
+                projectDependency.anvilScopeContributionsForSourceSetName(sourceSetName)
+
+              mergedScopeNames.any { contributions.containsKey(it) }
+            }
+            .filterNot { it.configurationName == ConfigurationName.api }
+
+          val importsFromDependencies = project.referencesFromDependencies(sourceSetName)
+
+          val directApiProjects = project.projectDependencies[sourceSetName.apiConfig()]
+            .orEmpty()
+            .map { it.project }
+            .toSet()
+
+          val directMainDependencies by lazy {
+            project.projectDependencies[sourceSetName].map { it.project }
+          }
+
+          mainDependencies
+            .asSequence()
+            // Anything with an `api` config must be inherited,
+            // and will be handled by the InheritedDependencyRule.
+            .filterNot { it.configurationName.isApi() }
+            .plus(scopeContributingProjects)
+            .distinctBy { it.project }
+            .filterNot { cpd ->
+              // exclude anything which is inherited but already included in local `api` deps
+              cpd.project in directApiProjects
+            }
+            .filterAsync {
+              it.project.mustBeApiIn(
+                referencesFromDependencies = importsFromDependencies,
+                sourceSetName = it.configurationName.toSourceSetName(),
+                isTestFixtures = it.isTestFixture,
+                directMainDependencies = directMainDependencies
+              )
+            }
+            .map { cpd ->
+              val source = project
+                .projectDependencies
+                .main()
+                .firstOrNull { it.project == cpd.project }
+                ?: project.dependencySources().sourceOfOrNull(
+                  dependencyProjectPath = cpd.project.path,
+                  sourceSetName = sourceSetName,
+                  isTestFixture = cpd.isTestFixture
+                )
+              InheritedDependencyWithSource(cpd, source)
+            }
+            .toList()
+            .distinctBy { it.configuredProjectDependency }
+            .toSet()
         }
-        .filterNot { it.configurationName == ConfigurationName.api }
-
-      val importsFromDependencies = project.referencesFromDependencies()
-
-      val directApiProjects = project.projectDependencies[ConfigurationName.api]
-        .orEmpty()
-        .map { it.project }
-        .toSet()
-
-      val directMainDependencies by lazy {
-        project.projectDependencies.main().map { it.project }
-      }
-
-      val api = mainDependencies
-        .asSequence()
-        // Anything with an `api` config must be inherited,
-        // and will be handled by the InheritedDependencyRule.
-        .filterNot { it.configurationName == ConfigurationName.api }
-        .plus(scopeContributingProjects)
-        .distinctBy { it.project }
-        .filterNot { cpd ->
-          // exclude anything which is inherited but already included in local `api` deps
-          cpd.project in directApiProjects
-        }
-        .filterAsync {
-          it.project.mustBeApiIn(
-            referencesFromDependencies = importsFromDependencies,
-            isTestFixtures = it.isTestFixture,
-            directMainDependencies = directMainDependencies
-          )
-        }
-        .map { cpd ->
-          val source = project
-            .projectDependencies
-            .main()
-            .firstOrNull { it.project == cpd.project }
-            ?: project.apiDependencySources().sourceOfOrNull(
-              dependencyProjectPath = cpd.project.path,
-              sourceSetName = SourceSetName.MAIN,
-              isTestFixture = cpd.isTestFixture
-            )
-          InheritedDependencyWithSource(cpd, source)
-        }
-        .toList()
-        .distinctBy { it.configuredProjectDependency }
-        .toSet()
 
       return MustBeApi(api)
     }
   }
 }
 
-private suspend fun McProject.referencesFromDependencies(): Set<String> {
+private suspend fun McProject.referencesFromDependencies(
+  sourceSetName: SourceSetName
+): Set<String> {
 
-  val declarationsInProject = declarations()
-    .get(SourceSetName.MAIN)
+  return sourceSetName.withUpstream(this)
+    .flatMapToSet { sourceSetOrUpstream ->
 
-  return jvmFilesForSourceSetName(SourceSetName.MAIN)
-    .filterIsInstance<KotlinFile>()
-    .flatMapListConcat { kotlinFile ->
+      val declarationsInProject = declarations()
+        .get(sourceSetOrUpstream)
 
-      kotlinFile
-        .apiReferences
-        .await()
-        .filterNot { declarationsInProject.contains(it) }
-    }.toSet()
+      jvmFilesForSourceSetName(sourceSetOrUpstream)
+        .flatMapListConcat { jvmFile ->
+
+          when (jvmFile) {
+            is JavaFile -> jvmFile.apiReferences.map { it.asString() }
+            is KotlinFile -> jvmFile.apiReferences.await()
+          }
+            .filterNot { declarationsInProject.contains(it) }
+        }
+    }
 }
 
 suspend fun McProject.mustBeApiIn(
   dependentProject: McProject,
+  sourceSetName: SourceSetName,
   isTestFixtures: Boolean
 ): Boolean {
-  val referencesFromDependencies = dependentProject.referencesFromDependencies()
-  val directMainDependencies = dependentProject.projectDependencies.main()
-    .map { it.project }
+  val referencesFromDependencies = dependentProject.referencesFromDependencies(sourceSetName)
+  val directDependencies = sourceSetName.withUpstream(dependentProject)
+    .flatMap { sourceSetOrUpstream ->
+      dependentProject.projectDependencies[sourceSetOrUpstream]
+        .map { it.project }
+    }
   return mustBeApiIn(
     referencesFromDependencies = referencesFromDependencies,
+    sourceSetName = sourceSetName,
     isTestFixtures = isTestFixtures,
-    directMainDependencies = directMainDependencies
+    directMainDependencies = directDependencies
   )
 }
 
 @OptIn(FlowPreview::class)
 private suspend fun McProject.mustBeApiIn(
   referencesFromDependencies: Set<String>,
+  sourceSetName: SourceSetName,
   isTestFixtures: Boolean,
   directMainDependencies: List<McProject>
 ): Boolean {
 
   suspend fun McProject.declarations(isTestFixtures: Boolean): LazySet<DeclarationName> {
+
+    TODO(
+      "Handle test and androidTest source sets here.  " +
+        "They don't publish their source the way that `debug` and whatnot do.  If it's a test " +
+        "configuration, then it should never be an `_api` config."
+    )
+
     return if (isTestFixtures) {
       declarations().get(SourceSetName.TEST_FIXTURES)
     } else {
-      declarations().get(SourceSetName.MAIN)
+      sourceSetName.withUpstream(this)
+        .map { declarations().get(it) }
+        .let { lazySet(it, emptyDataSource()) }
     }
   }
 
   val declarations = declarations(isTestFixtures)
 
-  val rTypeMatcher = "^R(?:\\.[a-zA-Z0-9_]+)?$".toRegex()
+  val rTypeMatcher = "^R(?:\\.\\w+)?$".toRegex()
 
   val (rTypes, nonRTypeReferences) = referencesFromDependencies
     .partition { rTypeMatcher.matches(it) }

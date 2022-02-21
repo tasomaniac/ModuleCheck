@@ -142,7 +142,6 @@ class GradleProjectProvider @AssistedInject constructor(
         anvilGradlePlugin = gradleProject.anvilGradlePluginOrNull(),
         androidResourcesEnabled = libraryExtension?.buildFeatures?.androidResources != false,
         viewBindingEnabled = testedExtension?.buildFeatures?.viewBinding == true,
-        androidPackageOrNull = gradleProject.androidPackageOrNull(),
         manifests = gradleProject.androidManifests().orEmpty(),
         logger = gradleLogger,
         jvmFileProviderFactory = jvmFileProviderFactory,

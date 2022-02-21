@@ -71,22 +71,49 @@ value class SourceSetName(val value: String) {
     }
   }
 
-  fun inheritedSourceSetNames(
-    hasConfigurations: HasConfigurations,
-    includeSelf: Boolean
-  ): Set<SourceSetName> {
-    val seed = if (includeSelf) {
-      mutableSetOf(this, MAIN)
-    } else {
-      mutableSetOf(MAIN)
+  fun withUpstream(
+    hasConfigurations: HasConfigurations
+  ): List<SourceSetName> {
+
+    /*
+     ┌────────────┐
+     │:lib2       │            ┌───────────────┐
+     │  ∟src      │            │:lib1          │
+     │    ∟debug  │─debugApi-─▶│  ∟src         │
+     │    ∟main   │            │    ∟main      │
+     └────────────┘            └───────────────┘
+
+     A project may declare a `debugApi` (or some other non-main config) dependency for another
+     project which doesn't have that same configuration/SourceSet.  If the dependency doesn't have
+     that SourceSet, we should return `main` since that's what the build does.  If the dependency
+     *does* have the SourceSet (`debug` in this case), then return that SourceSet and whatever it
+     inherits (which will include `main`).
+     */
+    if (hasConfigurations.sourceSets[this] == null) {
+      return listOf(MAIN)
     }
 
     return javaConfigurationNames()
-      .flatMapTo(seed) { configurationName ->
-        hasConfigurations.configurations[configurationName]
+      .fold(listOf(this)) { seed, configurationName ->
+        val new = hasConfigurations.configurations[configurationName]
           ?.inherited
           ?.mapToSet { inherited -> inherited.name.toSourceSetName() }
           .orEmpty()
+          .filter { !seed.contains(it) }
+          .flatMap { it.withUpstream(hasConfigurations) }
+
+        seed + new.filter { !seed.contains(it) }
+      }
+  }
+
+  fun downStream(
+    hasConfigurations: HasConfigurations,
+    includeSelf: Boolean
+  ): List<SourceSetName> {
+    return hasConfigurations.sourceSets.keys
+      .filter { it.inheritsFrom(this, hasConfigurations) }
+      .let { inheriting ->
+        if (includeSelf) listOf(this) + inheriting else inheriting
       }
   }
 

@@ -15,6 +15,7 @@
 
 package modulecheck.core.internal
 
+import kotlinx.coroutines.flow.toList
 import modulecheck.api.context.anvilGraph
 import modulecheck.api.context.anvilScopeContributionsForSourceSetName
 import modulecheck.api.context.declarations
@@ -62,6 +63,15 @@ suspend fun McProject.uses(dependency: ConfiguredProjectDependency): Boolean {
   val sourceSetName = dependency.configurationName.toSourceSetName()
 
   val dependencyDeclarations = dependency.declarations()
+
+  println(
+    """ ^^^^^^^^^^^^^  ${dependency.path}  ${dependency.configurationName.value}
+        |
+        |${dependencyDeclarations.toList().joinToString("\n") { it.fqName }}
+        |
+        |
+      """.trimMargin()
+  )
 
   val refs = referencesForSourceSetName(sourceSetName)
 

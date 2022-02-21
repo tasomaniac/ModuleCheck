@@ -42,7 +42,7 @@ class InheritedDependencyRule : ModuleCheckRule<InheritedDependencyFinding> {
     val dependencyPathCache = mutableMapOf<SourceSetName, Set<Pair<String, Boolean>>>()
 
     // Returns true if the dependency is already declared in this exact configuration, **or** if
-    // it's declared in an upstream configuration.
+    // it's declared in an withUpstream configuration.
     //
     // For example, this function will return true for a `testImplementation` configured dependency
     // which is already declared in the main source set (such as with `api` or `implementation`).
@@ -57,8 +57,8 @@ class InheritedDependencyRule : ModuleCheckRule<InheritedDependencyFinding> {
 
       return configurationName.toSourceSetName()
         // Check the receiver's configuration first, but if the dependency isn't used there, also
-        // check the upstream configurations.
-        .inheritedSourceSetNames(project, includeSelf = true)
+        // check the withUpstream configurations.
+        .withUpstream(project)
         .any { sourceSet ->
           dependencyPathsForSourceSet(sourceSet)
             .contains(this.project.path to isTestFixture)
@@ -115,9 +115,12 @@ class InheritedDependencyRule : ModuleCheckRule<InheritedDependencyFinding> {
       .filterNot { transitive -> transitive.contributed.project == project }
       .mapAsync { (source, inherited) ->
 
-        val mustBeApi = source.configurationName
-          .toSourceSetName() == SourceSetName.MAIN && inherited.project
-          .mustBeApiIn(project, inherited.isTestFixture)
+        val mustBeApi = inherited.project
+          .mustBeApiIn(
+            dependentProject = project,
+            sourceSetName = inherited.configurationName.toSourceSetName(),
+            isTestFixtures = inherited.isTestFixture
+          )
 
         val newConfig = if (mustBeApi) {
           inherited.configurationName.apiVariant()
